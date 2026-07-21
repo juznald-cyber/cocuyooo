@@ -306,6 +306,10 @@
 <div class="modal-bg" id="modalBg">
   <div class="modal" id="modalBox"></div>
 </div>
+<datalist id="servList">
+  <option>Guardias</option><option>Casetas</option><option>CCTV</option>
+  <option>Monitoreo</option><option>Rondas</option><option>Otros</option>
+</datalist>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -317,6 +321,7 @@ const LS_KEY = "cocuyo_cobranza_v1";
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const ESTADOS = ["Pendiente","Facturado","Cobrado","Factorizado"];
 const stClass = {Pendiente:"pend",Facturado:"fact",Cobrado:"cobr",Factorizado:"factz"};
+const SERVICIOS = ["Guardias","Casetas","CCTV","Monitoreo","Rondas","Otros"];
 
 // ---- Default seed (EJEMPLOS - editables/borrables) ----
 const SEED = {
@@ -352,6 +357,8 @@ function save(){
 
 /* ---------- helpers ---------- */
 function fmtMoney(n){n=Number(n)||0;return "$"+n.toLocaleString("es-CL")}
+function fmtNum(n){n=Number(n)||0;return n.toLocaleString("es-CL")}
+function parseNum(s){if(typeof s==='number')return s;return Number(String(s).replace(/[^\d-]/g,''))||0}
 function addDays(iso,days){if(!iso)return"";const d=new Date(iso+"T00:00:00");if(isNaN(d))return"";d.setDate(d.getDate()+days);return d.toISOString().slice(0,10)}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
 function toast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className="toast show"+(err?" err":"");setTimeout(()=>t.className="toast"+(err?" err":""),2600)}
@@ -372,7 +379,7 @@ document.querySelectorAll('nav button').forEach(b=>{
    ========================================================= */
 function newCob(){
   return {id:cid(), mes:"", anio:nowYear(), clienteId:"", cliente:"", rut:"",
-    monto:0,
+    servicio:"Guardias", monto:0,
     prefEnv:false, prefFecha:"",
     ocReq:true, ocRecibida:false, ocNum:"", ocFecha:"",
     hesRecibida:false, hesNum:"", hesFecha:"",
@@ -405,7 +412,7 @@ function renderCob(){
   document.getElementById('cbCount').textContent=rows.length;
   if(!rows.length){t.innerHTML=`<tbody><tr><td class="empty">${DB.cobranza.length?'Ningún registro coincide con el filtro.':'Sin registros aún. Usa <b>+ Agregar registro</b> o carga masiva desde <b>Importar</b>.'}</td></tr></tbody>`;return;}
   t.innerHTML=`<thead><tr>
-    <th>Mes serv.</th><th>Año</th><th>Cliente</th><th>Monto</th>
+    <th>Mes serv.</th><th>Año</th><th>Cliente / RUT</th><th>Servicio</th><th>Monto</th>
     <th>Prefactura</th><th>OC</th><th>HES/ROC</th><th>Factura</th><th>SII</th>
     <th>Vence</th><th>Factoriz.</th><th>Estado</th><th>Avance</th><th></th>
   </tr></thead><tbody>${rows.map(r=>cobRow(r)).join("")}</tbody>`;
@@ -419,8 +426,9 @@ function cobRow(r){
   return `<tr data-id="${r.id}">
     <td><select data-f="mes">${['<option value=""></option>'].concat(MESES.map(m=>`<option ${m===r.mes?'selected':''}>${m}</option>`)).join("")}</select></td>
     <td><input data-f="anio" type="number" value="${esc(r.anio)}" style="width:64px"></td>
-    <td><select data-f="clienteId"><option value="">—</option>${cliOpts}</select></td>
-    <td class="num"><input data-f="monto" type="number" value="${esc(r.monto)}" style="text-align:right"></td>
+    <td><select data-f="clienteId"><option value="">—</option>${cliOpts}</select><div style="font-size:11px;color:var(--muted);padding:2px 7px">${esc(r.rut||'—')}</div></td>
+    <td><input data-f="servicio" list="servList" value="${esc(r.servicio||'')}" placeholder="Servicio" style="width:100px"></td>
+    <td class="num"><input data-f="monto" data-money="1" type="text" value="${esc(fmtNum(r.monto))}" style="text-align:right;width:100px"></td>
     <td class="center"><input class="chk" type="checkbox" data-f="prefEnv" ${r.prefEnv?'checked':''}><br><input data-f="prefFecha" type="date" value="${esc(r.prefFecha)}" style="width:120px"></td>
     <td class="center"><input class="chk" type="checkbox" data-f="ocRecibida" ${r.ocRecibida?'checked':''}><br><input data-f="ocNum" placeholder="N° OC" value="${esc(r.ocNum)}" style="width:100px"></td>
     <td class="center"><input class="chk" type="checkbox" data-f="hesRecibida" ${r.hesRecibida?'checked':''}><br><input data-f="hesNum" placeholder="N° HES" value="${esc(r.hesNum)}" style="width:100px"></td>
@@ -440,7 +448,7 @@ function bindCobEvents(){
     tr.querySelectorAll('[data-f]').forEach(inp=>{
       inp.onchange=()=>{
         const f=inp.dataset.f;
-        let v = inp.type==='checkbox'?inp.checked:(inp.type==='number'?Number(inp.value):inp.value);
+        let v = inp.type==='checkbox'?inp.checked:(inp.dataset.money?parseNum(inp.value):(inp.type==='number'?Number(inp.value):inp.value));
         r[f]=v;
         if(f==='clienteId'){const c=DB.clientes.find(x=>x.id===v);r.cliente=c?c.nombre:"";r.rut=c?c.rut:"";}
         if(f==='prefEnv' && v && !r.prefFecha){r.prefFecha=new Date().toISOString().slice(0,10);}
@@ -584,7 +592,7 @@ function renderMatrix(){
       const label={Pendiente:"PEND",Facturado:"FACT",Cobrado:"OK",Factorizado:"FZ"}[best]||"";
       return `<td title="${esc(c.nombre)} · ${m}: ${recs.length} registro(s)"><span class="cell ${stClass[best]}">${label}</span></td>`;
     }).join("");
-    return `<tr><td class="cli">${esc(c.nombre)}</td>${cells}</tr>`;
+    return `<tr><td class="cli">${esc(c.nombre)}<div style="font-size:10px;color:var(--muted);font-weight:400">${esc(c.rut||'')}</div></td>${cells}</tr>`;
   }).join("");
   if(!clientes.length) body=`<tr><td class="cli">—</td>${MESES.map(()=>'<td><span class="cell none">·</span></td>').join("")}</tr>`;
   tbl.innerHTML=head+"<tbody>"+body+"</tbody>";
@@ -613,7 +621,8 @@ function openCobModal(){
       <label class="fld">Mes de servicio<select id="m_mes"><option value=""></option>${MESES.map(m=>`<option>${m}</option>`).join("")}</select></label>
       <label class="fld">Año<input id="m_anio" type="number" value="${nowYear()}"></label>
       <label class="fld full">Cliente<select id="m_cli"><option value="">—</option>${cliOpts}</select></label>
-      <label class="fld">Monto<input id="m_monto" type="number" value="0"></label>
+      <label class="fld">Servicio<input id="m_serv" list="servList" value="Guardias"></label>
+      <label class="fld">Monto<input id="m_monto" type="text" value="0" placeholder="Ej: 1.500.000"></label>
       <label class="fld">N° Factura<input id="m_fact"></label>
       <label class="fld">N° OC<input id="m_oc"></label>
       <label class="fld">N° HES/ROC<input id="m_hes"></label>
@@ -628,7 +637,9 @@ function openCobModal(){
     r.mes=val('m_mes');r.anio=Number(val('m_anio'));
     const cliId=val('m_cli');const c=DB.clientes.find(x=>x.id===cliId);
     r.clienteId=cliId;r.cliente=c?c.nombre:"";r.rut=c?c.rut:"";
-    r.monto=Number(val('m_monto'));r.facturaNum=val('m_fact');r.ocNum=val('m_oc');r.hesNum=val('m_hes');r.estado=val('m_est');
+    r.servicio=val('m_serv');
+    r.monto=parseNum(val('m_monto'));r.facturaNum=val('m_fact');r.ocNum=val('m_oc');r.hesNum=val('m_hes');r.estado=val('m_est');
+    if(r.facturaNum && r.estado==='Pendiente') r.estado='Facturado';
     DB.cobranza.unshift(r);save();closeModal();renderCob();renderDashboard();toast("Registro agregado");
   };
 }
@@ -641,7 +652,7 @@ document.getElementById('modalBg').onclick=e=>{if(e.target.id==='modalBg')closeM
    IMPORT / EXPORT (SheetJS)
    ========================================================= */
 const COB_COLS=[
-  ["Mes servicio","mes"],["Año","anio"],["Cliente","cliente"],["RUT","rut"],["Monto","monto"],
+  ["Mes servicio","mes"],["Año","anio"],["Cliente","cliente"],["RUT","rut"],["Servicio","servicio"],["Monto","monto"],
   ["Prefactura enviada (SI/NO)","prefEnv"],["Fecha prefactura","prefFecha"],
   ["OC recibida (SI/NO)","ocRecibida"],["N° OC","ocNum"],["Fecha OC","ocFecha"],
   ["HES recibida (SI/NO)","hesRecibida"],["N° HES/ROC","hesNum"],["Fecha HES","hesFecha"],
@@ -670,7 +681,7 @@ function downloadTemplate(kind){
   ensureXLSX(()=>{
     const cols=(kind==='cob'?COB_COLS:TEC_COLS).map(c=>c[0]);
     const example=kind==='cob'
-      ? {"Mes servicio":"Enero","Año":nowYear(),"Cliente":"Supermercado Ejemplo","RUT":"76.111.111-1","Monto":1500000,"Prefactura enviada (SI/NO)":"SI","Fecha prefactura":"2026-02-05","OC recibida (SI/NO)":"SI","N° OC":"OC-1234","Fecha OC":"2026-02-08","HES recibida (SI/NO)":"SI","N° HES/ROC":"HES-9988","Fecha HES":"2026-02-10","N° Factura":"F-0001","Fecha factura":"2026-02-11","Enviada SII (SI/NO)":"SI","Factorizada (SI/NO)":"NO","Entidad financiera":"","Fecha factorización":"","Estado":"Facturado","Nota":""}
+      ? {"Mes servicio":"Enero","Año":nowYear(),"Cliente":"Supermercado Ejemplo","RUT":"76.111.111-1","Servicio":"Guardias","Monto":1500000,"Prefactura enviada (SI/NO)":"SI","Fecha prefactura":"2026-02-05","OC recibida (SI/NO)":"SI","N° OC":"OC-1234","Fecha OC":"2026-02-08","HES recibida (SI/NO)":"SI","N° HES/ROC":"HES-9988","Fecha HES":"2026-02-10","N° Factura":"F-0001","Fecha factura":"2026-02-11","Enviada SII (SI/NO)":"SI","Factorizada (SI/NO)":"NO","Entidad financiera":"","Fecha factorización":"","Estado":"Facturado","Nota":""}
       : {"Mes servicio":"Enero","Año":nowYear(),"RUT cliente":"76.111.111-1","Cliente":"Cliente Ejemplo","N° Cotización":"COT-100","Factura":"F-2001","Orden de compra":"OC-55","HES":"HES-7","Monto":800000,"Estado":"Pendiente"};
     const ws=XLSX.utils.json_to_sheet([example],{header:cols});
     const wb=XLSX.utils.book_new();
@@ -704,6 +715,7 @@ function importFile(file){
             if(c){rec.clienteId=c.id;rec.rut=rec.rut||c.rut;}
             else if(rec.cliente){DB.clientes.push({id:cid(),nombre:rec.cliente,rut:rec.rut||""});rec.clienteId=DB.clientes[DB.clientes.length-1].id;}
             if(!rec.estado)rec.estado="Pendiente";
+            if(rec.facturaNum && rec.estado==="Pendiente")rec.estado="Facturado";
             // update by factura number if exists
             const ex=rec.facturaNum && DB.cobranza.find(x=>x.facturaNum&&x.facturaNum===rec.facturaNum);
             if(ex){Object.assign(ex,rec,{id:ex.id});updated++;}else{DB.cobranza.push(rec);added++;}
