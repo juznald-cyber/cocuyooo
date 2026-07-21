@@ -454,6 +454,14 @@ body.theme-dark .dias-chip.venc{color:#E08585;}
   </div>
 
   <div class="tab-panel active" id="tab-dashboard">
+    <div class="dash-section" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+      <strong style="font-size:13px;margin-right:6px;">⬇ Descargar informes (Excel):</strong>
+      <button class="btn btn-sm" id="btnRepFactorizado">Todo lo factorizado</button>
+      <button class="btn btn-sm" id="btnRepDetalle">Detalle de facturación</button>
+      <button class="btn btn-sm" id="btnRepPorCobrar">Cuentas por cobrar</button>
+      <button class="btn btn-sm" id="btnRepPagadas">Cobradas / pagadas</button>
+      <button class="btn btn-sm" id="btnRepTech">Tecnología</button>
+    </div>
     <div id="dashboardBody"></div>
   </div>
 
@@ -534,7 +542,8 @@ body.theme-dark .dias-chip.venc{color:#E08585;}
       <div class="sub">Se ofrecen al marcar una factura como factorizada. Agrega o elimina las que necesites.</div>
       <div id="entidadesChips" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <input type="text" id="nuevaEntidad" placeholder="Nombre de la entidad financiera" style="flex:1;min-width:220px;max-width:340px;border:1px solid var(--line-strong);border-radius:7px;padding:8px 10px;background:var(--panel);color:var(--ink);">
+        <input type="text" id="nuevaEntidadRazon" placeholder="Razón social" style="flex:1;min-width:200px;max-width:300px;border:1px solid var(--line-strong);border-radius:7px;padding:8px 10px;background:var(--panel);color:var(--ink);">
+        <input type="text" id="nuevaEntidadRut" placeholder="RUT" style="width:150px;border:1px solid var(--line-strong);border-radius:7px;padding:8px 10px;background:var(--panel);color:var(--ink);">
         <button class="btn btn-sm" id="btnAddEntidad">+ Agregar entidad</button>
       </div>
     </div>
@@ -641,6 +650,25 @@ function esc(s){
 var DEFAULT_CLIENTS = [{"id": "c1", "rut": "81201000-K", "cliente": "CENCOSUD SISA", "servicio": "GUARDIAS", "contacto": "ROSA CAMPOS", "correo": "rosa.campos@santaisabel.cl", "requiereOC": true, "activo": true}, {"id": "c2", "rut": "81201000-K", "cliente": "CENCOSUD SISA", "servicio": "REFUERZOS", "contacto": "ROSA CAMPOS", "correo": "rosa.campos@santaisabel.cl", "requiereOC": true, "activo": true}, {"id": "c3", "rut": "81201000-K", "cliente": "CENCOSUD JUMBO", "servicio": "GUARDIAS", "contacto": "ROSA CAMPOS", "correo": "rosa.campos@santaisabel.cl", "requiereOC": true, "activo": true}, {"id": "c4", "rut": "81201000-K", "cliente": "CENCOSUD JUMBO", "servicio": "CUSTODIA", "contacto": "DORIS BENAVIDES", "correo": "doriserika.benavidesquiroz@jumbo.cl", "requiereOC": true, "activo": true}, {"id": "c5", "rut": "81201000-K", "cliente": "CENCOSUD JUMBO", "servicio": "CONTROL CAMIONES", "contacto": "DORIS BENAVIDES", "correo": "doriserika.benavidesquiroz@jumbo.cl", "requiereOC": true, "activo": true}, {"id": "c6", "rut": "81201000-K", "cliente": "CENCOSUD JUMBO", "servicio": "RECICLAJE", "contacto": "DORIS BENAVIDES", "correo": "doriserika.benavidesquiroz@jumbo.cl", "requiereOC": true, "activo": true}, {"id": "c7", "rut": "81201000-K", "cliente": "CENCOSUD JUMBO", "servicio": "CASETA", "contacto": "ROSA CAMPOS", "correo": "rosa.campos@santaisabel.cl", "requiereOC": true, "activo": true}, {"id": "c8", "rut": "76134941-4", "cliente": "WALMART LIDER", "servicio": "GUARDIAS", "contacto": "HECTOR SALINAS / FRANCISCO JERIA", "correo": "hector.salinas@walmart.com", "requiereOC": true, "activo": true}, {"id": "c9", "rut": "76134946-5", "cliente": "WALMART EXPRESS", "servicio": "GUARDIAS", "contacto": "HECTOR SALINAS / FRANCISCO JERIA", "correo": "hector.salinas@walmart.com", "requiereOC": true, "activo": true}, {"id": "c10", "rut": "76833720-9", "cliente": "WALMART SBA", "servicio": "GUARDIAS", "contacto": "HECTOR SALINAS / FRANCISCO JERIA", "correo": "hector.salinas@walmart.com", "requiereOC": true, "activo": true}, {"id": "c11", "rut": "96562520-8", "cliente": "SERMOB LIMITADA", "servicio": "GUARDIAS", "contacto": "HECTOR SALINAS / FRANCISCO JERIA", "correo": "hector.salinas@walmart.com", "requiereOC": true, "activo": true}, {"id": "c12", "rut": "76134941-4", "cliente": "WALMART LIDER", "servicio": "SPOT", "contacto": "HECTOR SALINAS / FRANCISCO JERIA", "correo": "hector.salinas@walmart.com", "requiereOC": true, "activo": true}, {"id": "c13", "rut": "76134946-5", "cliente": "WALMART EXPRESS", "servicio": "SPOT", "contacto": "HECTOR SALINAS / FRANCISCO JERIA", "correo": "hector.salinas@walmart.com", "requiereOC": true, "activo": true}, {"id": "c14", "rut": "76833720-9", "cliente": "WALMART SBA", "servicio": "SPOT", "contacto": "HECTOR SALINAS / FRANCISCO JERIA", "correo": "hector.salinas@walmart.com", "requiereOC": true, "activo": true}, {"id": "c15", "rut": "81201000-K", "cliente": "CENCOSUD PARIS", "servicio": "GUARDIAS", "contacto": "EZEQUIEL BLANCH", "correo": "exequiel.blanch@paris.cl", "requiereOC": true, "activo": true}, {"id": "c16", "rut": "81201000-K", "cliente": "CENCOSUD PARIS", "servicio": "REFUERZOS", "contacto": "EZEQUIEL BLANCH", "correo": "exequiel.blanch@paris.cl", "requiereOC": true, "activo": true}, {"id": "c17", "rut": "76433310-1", "cliente": "PARKING SHOPPING", "servicio": "CASETA", "contacto": "JOCELYN JARA", "correo": "jocelyn.jara@cencosud.cl", "requiereOC": true, "activo": true}, {"id": "c18", "rut": "76951464-3", "cliente": "CENCOSUD INMOBILIARIO", "servicio": "GUARDIAS", "contacto": "JOCELYN JARA", "correo": "jocelyn.jara@cencosud.cl", "requiereOC": true, "activo": true}, {"id": "c19", "rut": "78408990-8", "cliente": "ADMINISTRADORA DE CENTROS COMERCIALES CENCOSUD SPA", "servicio": "GUARDIAS", "contacto": "ESTO LO VE DIRECTAMENTE OPERACIONES", "correo": "", "requiereOC": true, "activo": true}, {"id": "c20", "rut": "76166801-3", "cliente": "ADMINISTRADORA TMO S.A.", "servicio": "GUARDIAS", "contacto": "ESTO LO VE DIRECTAMENTE OPERACIONES", "correo": "", "requiereOC": true, "activo": true}, {"id": "c21", "rut": "96930440-6", "cliente": "KEYLOGISTICS LRI", "servicio": "GUARDIAS", "contacto": "ROSANNY MELENDEZ", "correo": "javier.varela@nazar.cl", "requiereOC": true, "activo": true}, {"id": "c22", "rut": "96930440-6", "cliente": "KEYLOGISTICS CDC", "servicio": "GUARDIAS", "contacto": "ROSANNY MELENDEZ", "correo": "javier.varela@nazar.cl", "requiereOC": true, "activo": true}, {"id": "c23", "rut": "79582220-8", "cliente": "TRANSPORTES NAZAR", "servicio": "GUARDIAS", "contacto": "JAVIER VARELA", "correo": "javier.varela@nazar.cl", "requiereOC": true, "activo": true}, {"id": "c24", "rut": "79582220-8", "cliente": "TRANSPORTES NAZAR TENO", "servicio": "GUARDIAS", "contacto": "JAVIER VARELA", "correo": "javier.varela@nazar.cl", "requiereOC": true, "activo": true}, {"id": "c25", "rut": "79582220-8", "cliente": "TRANSPORTES NAZAR", "servicio": "CASETA", "contacto": "JAVIER VARELA", "correo": "javier.varela@nazar.cl", "requiereOC": true, "activo": true}, {"id": "c26", "rut": "77201840-1", "cliente": "CARLOS HERRERA ACERO (CERRILLOS)", "servicio": "GUARDIAS", "contacto": "GUILLERMO RAMIREz", "correo": "gramirez@carlosherrera.cl", "requiereOC": true, "activo": true}, {"id": "c27", "rut": "77201840-1", "cliente": "CARLOS HERRERA ACERO (CONCHALI)", "servicio": "GUARDIAS", "contacto": "GUILLERMO RAMIREz", "correo": "gramirez@carlosherrera.cl", "requiereOC": true, "activo": true}, {"id": "c28", "rut": "77201840-1", "cliente": "CARLOS HERRERA ACERO (ENEA)", "servicio": "GUARDIAS", "contacto": "GUILLERMO RAMIREz", "correo": "gramirez@carlosherrera.cl", "requiereOC": true, "activo": true}, {"id": "c29", "rut": "77201840-1", "cliente": "CARLOS HERRERA ACERO (LA REINA)", "servicio": "GUARDIAS", "contacto": "GUILLERMO RAMIREz", "correo": "gramirez@carlosherrera.cl", "requiereOC": true, "activo": true}, {"id": "c30", "rut": "77201840-1", "cliente": "CARLOS HERRERA ACERO (STA. ROSA)", "servicio": "GUARDIAS", "contacto": "GUILLERMO RAMIREz", "correo": "gramirez@carlosherrera.cl", "requiereOC": true, "activo": true}, {"id": "c31", "rut": "77201840-1", "cliente": "CARLOS HERRERA ACERO (PTO MONTT)", "servicio": "GUARDIAS", "contacto": "GUILLERMO RAMIREz", "correo": "gramirez@carlosherrera.cl", "requiereOC": true, "activo": true}, {"id": "c32", "rut": "96986070-8", "cliente": "PARACLINICS", "servicio": "GUARDIAS", "contacto": "BETSY BALTIERRA", "correo": "bbaltierra@paraclinics.cl", "requiereOC": true, "activo": true}, {"id": "c33", "rut": "96607990-8", "cliente": "HIDRONOR", "servicio": "GUARDIAS", "contacto": "MARCELA MALDONADO", "correo": "marcela.maldonado@hidronor.cl", "requiereOC": true, "activo": true}, {"id": "c34", "rut": "59061540-4", "cliente": "UNITED AIRLINES", "servicio": "GUARDIAS", "contacto": "DIANA SHOMALY", "correo": "diana.shomaly@united.com", "requiereOC": true, "activo": true}, {"id": "c35", "rut": "76513688-1", "cliente": "CARLS JR NUEVA PROVIDENCIA", "servicio": "GUARDIAS", "contacto": "KATHERINE BASCUR / ESTEBAN REINOSO", "correo": "katherine.bascur@corachi.cl", "requiereOC": true, "activo": true}, {"id": "c36", "rut": "76513688-1", "cliente": "CORACHI MALL ARAUCO MAIPU", "servicio": "GUARDIAS", "contacto": "KATHERINE BASCUR / ESTEBAN REINOSO", "correo": "katherine.bascur@corachi.cl", "requiereOC": true, "activo": true}, {"id": "c37", "rut": "76513688-1", "cliente": "CORACHI MALL VESPUCIO", "servicio": "GUARDIAS", "contacto": "KATHERINE BASCUR / ESTEBAN REINOSO", "correo": "katherine.bascur@corachi.cl", "requiereOC": true, "activo": true}, {"id": "c38", "rut": "76513688-1", "cliente": "CORACHI MALL VESPUCIO 2", "servicio": "GUARDIAS", "contacto": "KATHERINE BASCUR / ESTEBAN REINOSO", "correo": "katherine.bascur@corachi.cl", "requiereOC": true, "activo": true}, {"id": "c39", "rut": "76135018-8", "cliente": "QLF LABS", "servicio": "GUARDIAS", "contacto": "RONALD ALMENDRAS", "correo": "ralmendras@qualified.cl", "requiereOC": true, "activo": true}, {"id": "c40", "rut": "56084410-7", "cliente": "EDIFICIOS PALMAS DE REÑACA", "servicio": "GUARDIAS", "contacto": "FELIPE ALTAMIRANO / CAROLINA LOPEZ", "correo": "palmasderenaca@gmail.com", "requiereOC": true, "activo": true}, {"id": "c41", "rut": "76549580-6", "cliente": "ENZO LEPORI Y ASOCIADOS SPA", "servicio": "GUARDIAS", "contacto": "FRANCO LEPORI", "correo": "FLEPORI@OBWFRANCO.COM", "requiereOC": true, "activo": true}, {"id": "c42", "rut": "92091000-9", "cliente": "UNILEVER", "servicio": "GUARDIAS", "contacto": "SERGIO LUARDO", "correo": "SERGIO.LUARDO@UNILEVER.COM", "requiereOC": true, "activo": true}, {"id": "c43", "rut": "99512250-2", "cliente": "MABU", "servicio": "CASETA", "contacto": "SEBASTIAN DOERING", "correo": "sdoering@mabu.cl", "requiereOC": true, "activo": true}, {"id": "c44", "rut": "76524914-7", "cliente": "BIOLOGICA LABORATORIOS SPA", "servicio": "CASETA", "contacto": "FELIPE ORELLANA / GIOVANNA GAMBOA", "correo": "forellana@biologicalaboratorios.cl", "requiereOC": true, "activo": true}, {"id": "c45", "rut": "91502000-3", "cliente": "SALFA", "servicio": "CASETA", "contacto": "PATRICIA MONTES", "correo": "pmontesv@salfa.cl", "requiereOC": true, "activo": true}, {"id": "c46", "rut": "76307389-0", "cliente": "PLANTA DE REVISIÓN TÉCNICA", "servicio": "GUARDIAS", "contacto": "SARA TORO", "correo": "storo@chrt.cl", "requiereOC": true, "activo": true}, {"id": "c47", "rut": "96874030-K", "cliente": "ABC SUR", "servicio": "GUARDIAS", "contacto": "MARJORIE ACUÑA", "correo": "marjorie.acuna@abc.cl", "requiereOC": true, "activo": true}, {"id": "c48", "rut": "96874030-K", "cliente": "ABC CENTRO", "servicio": "GUARDIAS", "contacto": "MARJORIE ACUÑA", "correo": "marjorie.acuna@abc.cl", "requiereOC": true, "activo": true}, {"id": "c49", "rut": "96874030-K", "cliente": "ABC METROPOLITANA", "servicio": "GUARDIAS", "contacto": "MARJORIE ACUÑA", "correo": "marjorie.acuna@abc.cl", "requiereOC": true, "activo": true}, {"id": "c50", "rut": "96874030-K", "cliente": "ABC QUINTA", "servicio": "GUARDIAS", "contacto": "MARJORIE ACUÑA", "correo": "marjorie.acuna@abc.cl", "requiereOC": true, "activo": true}, {"id": "c51", "rut": "76378831-8", "cliente": "FARMACIAS AHUMADA SPA", "servicio": "GUARDIAS", "contacto": "SILVA KAISER", "correo": "SKAISER@AHUMADA.CL", "requiereOC": true, "activo": true}, {"id": "c52", "rut": "76378831-8", "cliente": "FARMACIAS AHUMADA SPA", "servicio": "SPOT", "contacto": "SILVA KAISER", "correo": "SKAISER@AHUMADA.CL", "requiereOC": true, "activo": true}, {"id": "c53", "rut": "96792430-K", "cliente": "SODIMAC S.A.", "servicio": "GUARDIAS", "contacto": "JORGE GALAZ", "correo": "JGALAZT@SODIMAC.CL", "requiereOC": true, "activo": true}, {"id": "c54", "rut": "76993859-1", "cliente": "IKSO SPA PLAZA OESTE", "servicio": "GUARDIAS", "contacto": "ANDRES VILLAROEL", "correo": "AIVILLAROELT@IKEA.CL", "requiereOC": true, "activo": true}, {"id": "c55", "rut": "76993859-1", "cliente": "IKSO SPA PLAZA OESTE", "servicio": "CCTV", "contacto": "ANDRES VILLAROEL", "correo": "AIVILLAROELT@IKEA.CL", "requiereOC": true, "activo": true}, {"id": "c56", "rut": "76993859-1", "cliente": "IKSO SPA KENNEDY", "servicio": "GUARDIAS", "contacto": "MACARENA VEGA", "correo": "MALEJVEGA@IKEA.CL", "requiereOC": true, "activo": true}, {"id": "c57", "rut": "76993859-1", "cliente": "IKSO SPA KENNEDY", "servicio": "CCTV", "contacto": "MACARENA VEGA", "correo": "MALEJVEGA@IKEA.CL", "requiereOC": true, "activo": true}, {"id": "c58", "rut": "76993859-1", "cliente": "IKSO SPA KENNEDY", "servicio": "SUPERVISOR", "contacto": "CRISTIAN MONDINGER", "correo": "CEMODINGER@IKEA.CL", "requiereOC": true, "activo": true}, {"id": "c59", "rut": "76993859-1", "cliente": "IKSO SPA WAREHOUSE", "servicio": "GUARDIAS", "contacto": "CRISTIAN MONDINGER", "correo": "CEMODINGER@IKEA.CL", "requiereOC": true, "activo": true}, {"id": "c60", "rut": "76993859-1", "cliente": "IKSO SPA WAREHOUSE", "servicio": "CCTV", "contacto": "CRISTIAN MONDINGER", "correo": "CEMODINGER@IKEA.CL", "requiereOC": true, "activo": true}, {"id": "c61", "rut": "77529470-1", "cliente": "COMERCIAL SNA-E", "servicio": "GUARDIAS", "contacto": "LORENA GUTIERREZ", "correo": "LORENA.GUTIERREZ@SNAEUROPE.COM", "requiereOC": true, "activo": true}, {"id": "c62", "rut": "76351246-0", "cliente": "ALIANZA TECH (DGAC)", "servicio": "CASETA", "contacto": "RODRIGO VERDUGO", "correo": "rverdugo@alianzatech.net", "requiereOC": true, "activo": true}, {"id": "c63", "rut": "81201000-K", "cliente": "CENCOSUD JUMBO MEMBRILLAR", "servicio": "CASETA", "contacto": "CAROLINA NUÑEZ", "correo": "carolina.nunez@jumbo.cl", "requiereOC": true, "activo": true}, {"id": "c64", "rut": "78408990-8", "cliente": "CENCO RANCAGUA", "servicio": "CASETA", "contacto": "MARIANO MARTINEZ", "correo": "mariano.martinez@cencosud.cl", "requiereOC": true, "activo": true}, {"id": "c65", "rut": "81201000-K", "cliente": "CENCOSUD JUMBO", "servicio": "REFUERZOS", "contacto": "ROSA CAMPOS", "correo": "rosa.campos@santaisabel.cl", "requiereOC": true, "activo": true}, {"id": "c66", "rut": "76351246-0", "cliente": "ALIANZA TECH (PTE ALTO Y TNT CRUZ)", "servicio": "CASETA", "contacto": "JESUS ALVARADO", "correo": "jalvarado@alianzaseguridad.net", "requiereOC": true, "activo": true}, {"id": "c67", "rut": "78086058-8", "cliente": "PUNTO BRIKS SPA", "servicio": "CCTV", "contacto": "FELIPE ORELLANA / GIOVANNA GAMBOA", "correo": "forellana@biologicalaboratorios.cl", "requiereOC": true, "activo": true}, {"id": "c68", "rut": "77266515-6", "cliente": "A3 PROYECTOS, INVERSIONES Y RENTAS SPA", "servicio": "GUARDIAS", "contacto": "CESAR ANDRADE", "correo": "cesar@mercadocondell.cl", "requiereOC": true, "activo": true}];
 
 var ENTIDADES_FACTORING = ['Financia','BCI Factoring','Finameris','Capital Expres','Incofin','Bolsa de Productos de Chile','Security Factoring','ACF','Simpli','Otra'];
+/* Entidades de factoring ahora se registran con razón social + RUT.
+   factoring.entidad en cada registro sigue guardando la razón social (texto);
+   el RUT se obtiene de este maestro al generar informes. */
+function DEFAULT_ENTIDADES(){ return ENTIDADES_FACTORING.map(function(s){ return {razon:s, rut:''}; }); }
+function normalizeEntidades(arr){
+  if(!Array.isArray(arr)) return DEFAULT_ENTIDADES();
+  var out = arr.map(function(e){
+    if(typeof e === 'string') return {razon:e, rut:''};
+    if(e && typeof e === 'object') return {razon:(e.razon||e.nombre||''), rut:(e.rut||'')};
+    return null;
+  }).filter(function(e){ return e && e.razon; });
+  return out.length ? out : DEFAULT_ENTIDADES();
+}
+function entidadByName(name){
+  if(!name) return null;
+  var n=String(name).toLowerCase().trim(); var arr=state.entidades||[];
+  for(var i=0;i<arr.length;i++){ if((arr[i].razon||'').toLowerCase().trim()===n) return arr[i]; }
+  return null;
+}
 
 
 /* Registros precargados: facturación real extraída del Excel (pestaña INGRESO), enero-junio 2026 */
@@ -989,7 +1017,7 @@ var state = {
   records: JSON.parse(JSON.stringify(DEFAULT_RECORDS)),
   periods: JSON.parse(JSON.stringify(DEFAULT_PERIODS)),
   tech: JSON.parse(JSON.stringify(DEFAULT_TECH)),
-  entidades: JSON.parse(JSON.stringify(ENTIDADES_FACTORING))
+  entidades: DEFAULT_ENTIDADES()
 };
 var LS_KEY = 'cobranza_estado_v1';
 var fileHandle = null;
@@ -1091,7 +1119,7 @@ function loadFromObject(obj){
   state.records = obj.records;
   state.periods = obj.periods || [];
   state.tech = obj.tech || [];
-  state.entidades = obj.entidades || JSON.parse(JSON.stringify(ENTIDADES_FACTORING));
+  state.entidades = normalizeEntidades(obj.entidades);
   sortPeriods();
   saveLocal();
   renderAll();
@@ -1105,7 +1133,7 @@ function loadLocal(){
     if(raw){ var o = JSON.parse(raw);
       if(o && o.clients && o.records){
         state.clients=o.clients; state.records=o.records; state.periods=o.periods||[]; state.tech=o.tech||[];
-        state.entidades=o.entidades||JSON.parse(JSON.stringify(ENTIDADES_FACTORING));
+        state.entidades=normalizeEntidades(o.entidades);
         sortPeriods(); return true;
       }
     }
@@ -1118,7 +1146,7 @@ function resetToDefault(){
   state.records=JSON.parse(JSON.stringify(DEFAULT_RECORDS));
   state.periods=JSON.parse(JSON.stringify(DEFAULT_PERIODS));
   state.tech=JSON.parse(JSON.stringify(DEFAULT_TECH));
-  state.entidades=JSON.parse(JSON.stringify(ENTIDADES_FACTORING));
+  state.entidades=DEFAULT_ENTIDADES();
   sortPeriods(); saveLocal(); renderAll(); toast('Datos restablecidos al ejemplo.', 'ok');
 }
 var saveToFileDebounced = debounce(function(){ saveToConnectedFile(); }, 500);
@@ -1978,23 +2006,24 @@ function loadTheme(){ var t='light'; try{ t = localStorage.getItem('cobranza_the
 /* ---------- Entidades financieras ---------- */
 function renderEntidadesDatalist(){
   var dl=document.getElementById('entidadesDatalist'); if(!dl) return;
-  dl.innerHTML = (state.entidades||[]).map(function(e){ return '<option value="'+esc(e)+'"></option>'; }).join('');
+  dl.innerHTML = (state.entidades||[]).map(function(e){ return '<option value="'+esc(e.razon)+'">'+esc(e.rut||'')+'</option>'; }).join('');
 }
 function renderEntidades(){
   renderEntidadesDatalist();
   var box=document.getElementById('entidadesChips'); if(!box) return;
   box.innerHTML = (state.entidades && state.entidades.length)
-    ? state.entidades.map(function(e,i){ return '<span style="display:inline-flex;align-items:center;gap:7px;background:var(--purple-pale);color:var(--purple);padding:5px 11px;border-radius:20px;font-size:12px;font-weight:600;">'+esc(e)+' <span data-del="'+i+'" title="Eliminar" style="cursor:pointer;font-weight:800;opacity:.7;">×</span></span>'; }).join('')
+    ? state.entidades.map(function(e,i){ return '<span style="display:inline-flex;align-items:center;gap:7px;background:var(--purple-pale);color:var(--purple);padding:5px 11px;border-radius:20px;font-size:12px;font-weight:600;">'+esc(e.razon)+(e.rut?(' <span style="opacity:.8;font-weight:500;">· '+esc(e.rut)+'</span>'):'')+' <span data-del="'+i+'" title="Eliminar" style="cursor:pointer;font-weight:800;opacity:.7;">×</span></span>'; }).join('')
     : '<span style="color:var(--slate-soft);font-size:12px;">Sin entidades registradas. Agrega una abajo.</span>';
   Array.prototype.forEach.call(box.querySelectorAll('[data-del]'), function(x){
     x.addEventListener('click', function(){ var i=parseInt(x.getAttribute('data-del'),10); state.entidades.splice(i,1); persist(); });
   });
 }
 function addEntidad(){
-  var el=document.getElementById('nuevaEntidad'); if(!el) return;
-  var v=(el.value||'').trim(); if(!v){ return; }
-  if((state.entidades||[]).map(function(x){return x.toLowerCase();}).indexOf(v.toLowerCase())>-1){ toast('Esa entidad ya existe.', 'err'); return; }
-  state.entidades.push(v); el.value=''; persist(); toast('Entidad agregada.', 'ok');
+  var elR=document.getElementById('nuevaEntidadRazon'), elRut=document.getElementById('nuevaEntidadRut'); if(!elR) return;
+  var razon=(elR.value||'').trim(), rut=(elRut?elRut.value:'').trim();
+  if(!razon){ toast('Ingresa la razón social.', 'err'); return; }
+  if((state.entidades||[]).map(function(x){return (x.razon||'').toLowerCase();}).indexOf(razon.toLowerCase())>-1){ toast('Esa entidad ya existe.', 'err'); return; }
+  state.entidades.push({razon:razon, rut:rut}); elR.value=''; if(elRut) elRut.value=''; persist(); toast('Entidad agregada.', 'ok');
 }
 
 /* ---------- Exportar resumen a Excel (.xlsx) ---------- */
@@ -2024,6 +2053,131 @@ function exportResumenXlsx(){
   toast('Excel generado.', 'ok');
 }
 
+/* ============================================================
+   INFORMES EN EXCEL
+   ============================================================ */
+function recEntries(filterFn){
+  var out=[];
+  Object.keys(state.records).forEach(function(k){ var r=state.records[k]; var c=getClient(r.clientId); if(!c) return; if(filterFn && !filterFn(r,c)) return; out.push({r:r, c:c}); });
+  out.sort(function(a,b){ return (a.r.periodo||'').localeCompare(b.r.periodo||'') || a.c.cliente.localeCompare(b.c.cliente); });
+  return out;
+}
+function saveWb(wb, name){ XLSX.writeFile(wb, name); toast('Informe generado.', 'ok'); }
+
+/* Informe: todo lo factorizado (RUT + razón social entidad, factura, fecha factoring) */
+function exportFactorizadoXlsx(){
+  if(!window.XLSX){ toast('Módulo Excel no disponible.', 'err'); return; }
+  var entries = recEntries(function(r){ return r.factoring.factorizado; });
+  if(!entries.length){ toast('No hay facturas factorizadas.', 'err'); return; }
+  var rows = entries.map(function(x){ var r=x.r, c=x.c; var ent=entidadByName(r.factoring.entidad);
+    return {
+      'Razón social entidad': r.factoring.entidad||'',
+      'RUT entidad': ent?ent.rut:'',
+      'N° Factura': r.factura.numero||'',
+      'Fecha factoring': r.factoring.fecha||'',
+      'Monto factorizado': r.factoring.monto||r.factura.total||0,
+      'Cliente': c.cliente, 'Servicio': c.servicio, 'RUT cliente': c.rut,
+      'Mes servicio': fmtPeriodo(r.periodo)
+    };
+  });
+  rows.sort(function(a,b){ return (a['Razón social entidad']||'').localeCompare(b['Razón social entidad']) || (a['Fecha factoring']||'').localeCompare(b['Fecha factoring']); });
+  var fe = factoringByEntityMap();
+  var resumen = Object.keys(fe).sort(function(a,b){ return fe[b].monto-fe[a].monto; }).map(function(e){ var ent=entidadByName(e); return {'Razón social entidad':e,'RUT entidad':ent?ent.rut:'','Cantidad facturas':fe[e].count,'Monto total':fe[e].monto}; });
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Factorizado');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumen), 'Resumen por entidad');
+  saveWb(wb, 'informe-factorizado.xlsx');
+}
+
+/* Informe: detalle de todo lo facturado */
+function exportDetalleXlsx(){
+  if(!window.XLSX){ toast('Módulo Excel no disponible.', 'err'); return; }
+  var entries = recEntries(function(r){ return r.factura.emitida; });
+  if(!entries.length){ toast('No hay facturas emitidas.', 'err'); return; }
+  var rows = entries.map(function(x){ var r=x.r, c=x.c; var ent=entidadByName(r.factoring.entidad);
+    return {
+      'Mes servicio': fmtPeriodo(r.periodo),
+      'Cliente': c.cliente, 'Servicio': c.servicio, 'RUT cliente': c.rut,
+      'N° Factura': r.factura.numero||'',
+      'Fecha factura': r.factura.fechaFacturada||'',
+      'Vencimiento': r.factura.fechaVencimiento||'',
+      'Neto': r.factura.neto||0, 'IVA': r.factura.iva||0, 'Total': r.factura.total||0,
+      'Orden de Compra': r.oc.numero||'', 'HES': r.hes.numero||'',
+      'Estado': STATUS_DEFS[computeStatus(r,c)].label,
+      'Factorizado': r.factoring.factorizado?'SI':'NO',
+      'Entidad factoring': r.factoring.entidad||'', 'RUT entidad': ent?ent.rut:'',
+      'Fecha factoring': r.factoring.fecha||'',
+      'Pagado': r.pago.pagado?'SI':'NO', 'Fecha pago': r.pago.fecha||'',
+      'Glosa': r.notas||''
+    };
+  });
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Detalle facturación');
+  saveWb(wb, 'detalle-facturacion.xlsx');
+}
+
+/* Informe: cuentas por cobrar (emitidas, no pagadas, no factorizadas) */
+function exportPorCobrarXlsx(){
+  if(!window.XLSX){ toast('Módulo Excel no disponible.', 'err'); return; }
+  var entries = recEntries(function(r){ return r.factura.emitida && !r.pago.pagado && !r.factoring.factorizado; });
+  if(!entries.length){ toast('No hay cuentas por cobrar.', 'err'); return; }
+  entries.sort(function(a,b){ return (a.r.factura.fechaVencimiento||'').localeCompare(b.r.factura.fechaVencimiento||''); });
+  var rows = entries.map(function(x){ var r=x.r, c=x.c; var d=daysUntil(r.factura.fechaVencimiento);
+    return {
+      'Cliente': c.cliente, 'Servicio': c.servicio, 'RUT cliente': c.rut,
+      'Mes servicio': fmtPeriodo(r.periodo),
+      'N° Factura': r.factura.numero||'', 'Total': r.factura.total||0,
+      'Fecha factura': r.factura.fechaFacturada||'', 'Vencimiento': r.factura.fechaVencimiento||'',
+      'Días (+ por vencer / - vencida)': (d===null?'':d),
+      'Situación': (d===null?'—':(d<0?'VENCIDA':(d<=7?'Por vencer':'Vigente'))),
+      'Estado': STATUS_DEFS[computeStatus(r,c)].label
+    };
+  });
+  var total = rows.reduce(function(a,r){ return a+(r['Total']||0); },0);
+  rows.push({'Cliente':'TOTAL','Total':total});
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Por cobrar');
+  saveWb(wb, 'cuentas-por-cobrar.xlsx');
+}
+
+/* Informe: facturas cobradas / pagadas */
+function exportPagadasXlsx(){
+  if(!window.XLSX){ toast('Módulo Excel no disponible.', 'err'); return; }
+  var entries = recEntries(function(r){ return r.pago.pagado; });
+  if(!entries.length){ toast('No hay facturas pagadas.', 'err'); return; }
+  var rows = entries.map(function(x){ var r=x.r, c=x.c;
+    return {
+      'Cliente': c.cliente, 'Servicio': c.servicio, 'RUT cliente': c.rut,
+      'Mes servicio': fmtPeriodo(r.periodo),
+      'N° Factura': r.factura.numero||'',
+      'Monto pagado': r.pago.monto||r.factura.total||0,
+      'Fecha pago': r.pago.fecha||'', 'Fecha factura': r.factura.fechaFacturada||''
+    };
+  });
+  var total=rows.reduce(function(a,r){ return a+(r['Monto pagado']||0); },0);
+  rows.push({'Cliente':'TOTAL','Monto pagado':total});
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Cobradas');
+  saveWb(wb, 'facturas-cobradas.xlsx');
+}
+
+/* Informe: detalle de Tecnología */
+function exportTechXlsx(){
+  if(!window.XLSX){ toast('Módulo Excel no disponible.', 'err'); return; }
+  if(!state.tech.length){ toast('No hay servicios de tecnología.', 'err'); return; }
+  var rows = state.tech.slice().sort(function(a,b){ return (a.periodo||'').localeCompare(b.periodo||''); }).map(function(t){
+    return {
+      'Mes servicio': fmtPeriodo(t.periodo), 'RUT cliente': t.rut||'', 'Cliente': t.cliente||'',
+      'N° Cotización': t.cotizacion||'', 'N° Factura': t.factura||'', 'Orden de Compra': t.oc||'', 'HES': t.hes||'',
+      'Neto': t.neto||0, 'IVA': t.iva||0, 'Total': t.total||0,
+      'Estado': (TECH_STATUS[t.estado]||TECH_STATUS.pendiente).label, 'Notas': t.notas||''
+    };
+  });
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Tecnología');
+  saveWb(wb, 'detalle-tecnologia.xlsx');
+}
+
 /* ---------- Render general ---------- */
 function renderAll(){ renderFilterOptions(); renderKPIs(); renderTable(); renderMatrix(); renderTech(); renderClientes(); renderEntidades(); renderDashboard(); }
 function switchTab(tab){
@@ -2047,7 +2201,13 @@ function initEvents(){
   document.getElementById('btnExportCsv').addEventListener('click', exportResumenCsv);
   document.getElementById('btnExportXls').addEventListener('click', exportResumenXlsx);
   document.getElementById('btnAddEntidad').addEventListener('click', addEntidad);
-  document.getElementById('nuevaEntidad').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); addEntidad(); } });
+  document.getElementById('nuevaEntidadRazon').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); addEntidad(); } });
+  document.getElementById('nuevaEntidadRut').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); addEntidad(); } });
+  document.getElementById('btnRepFactorizado').addEventListener('click', exportFactorizadoXlsx);
+  document.getElementById('btnRepDetalle').addEventListener('click', exportDetalleXlsx);
+  document.getElementById('btnRepPorCobrar').addEventListener('click', exportPorCobrarXlsx);
+  document.getElementById('btnRepPagadas').addEventListener('click', exportPagadasXlsx);
+  document.getElementById('btnRepTech').addEventListener('click', exportTechXlsx);
   document.getElementById('btnConnect').addEventListener('click', connectFile);
   document.getElementById('btnExport').addEventListener('click', exportBackup);
   document.getElementById('btnImportTrigger').addEventListener('click', function(){ document.getElementById('fileImport').click(); });
