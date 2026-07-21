@@ -36,6 +36,36 @@
   --radius:10px;
   --shadow:0 1px 2px rgba(18,24,31,0.06), 0 6px 20px -8px rgba(18,24,31,0.18);
 }
+/* ===== Tema oscuro ===== */
+body.theme-dark{
+  --ink:#E8E3D6; --ink-soft:#F2EEE3; --paper:#12161B; --panel:#1B2128;
+  --line:#2B323B; --line-strong:#3C4550; --slate:#AEB7C2; --slate-soft:#7C8794;
+  --amber-pale:#3A2E19; --green-pale:#153024; --blue-pale:#152539; --purple-pale:#241A36;
+  --orange-pale:#38251A; --red-pale:#3A1E1E; --gray-pale:#252B33;
+  --shadow:0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -8px rgba(0,0,0,0.65);
+}
+body.theme-dark thead th,
+body.theme-dark .matrix thead th,
+body.theme-dark .matrix thead th.sticky-col,
+body.theme-dark .matrix tbody td.sticky-col,
+body.theme-dark .section-head,
+body.theme-dark .matrix tfoot td{ background:#232A32; }
+body.theme-dark tbody tr:hover,
+body.theme-dark .matrix-cell:hover,
+body.theme-dark .dash-table tr:hover td{ background:#232A32; }
+body.theme-dark .field input, body.theme-dark .field select, body.theme-dark .field textarea,
+body.theme-dark .filterbar select, body.theme-dark .filterbar input,
+body.theme-dark .drop{ background:#12161B; color:var(--ink); }
+body.theme-dark .btn{ background:#232A32; }
+body.theme-dark .btn-primary{ background:#E8E3D6; color:#12161B; border-color:#E8E3D6; }
+body.theme-dark .btn-amber{ background:var(--amber); color:#12161B; border-color:var(--amber); }
+body.theme-dark .cp-node{ background:#1B2128; }
+body.theme-dark .b-amber{color:#E0A84E;} body.theme-dark .b-blue{color:#7EA8E0;}
+body.theme-dark .b-green{color:#5FC08C;} body.theme-dark .b-purple{color:#B18AD9;}
+body.theme-dark .b-red{color:#E08585;} body.theme-dark .b-orange{color:#E0955F;}
+body.theme-dark .b-gray{color:#AEB7C2;}
+body.theme-dark .computed{color:#E0A84E;} body.theme-dark .imp-note{color:#7EA8E0;}
+body{transition:background-color .2s ease,color .2s ease;}
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
 body{
@@ -342,6 +372,28 @@ tbody tr:hover{background:#FAF8F1;}
   .cliente-card{grid-template-columns:1fr;}
   .cliente-head-row{display:none;}
 }
+/* ===== Dashboard & gráficos ===== */
+.dash-section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:16px;box-shadow:var(--shadow);}
+.dash-section h3{font-size:14px;}
+.dash-section .sub{color:var(--slate-soft);font-size:11.5px;margin:2px 0 14px;}
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+@media (max-width:900px){.dash-grid{grid-template-columns:1fr;}}
+.bar-row{display:grid;grid-template-columns:170px 1fr auto;align-items:center;gap:10px;padding:5px 0;cursor:pointer;}
+.bar-row:hover .bar-label{color:var(--ink);}
+.bar-label{font-size:12px;color:var(--slate);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.bar-track{background:var(--gray-pale);border-radius:6px;height:18px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:6px;transition:width .35s ease;min-width:3px;}
+.bar-val{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--slate);white-space:nowrap;text-align:right;}
+.bar-val b{color:var(--ink);}
+.dash-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+.dash-table th{text-align:left;font-size:10px;text-transform:uppercase;color:var(--slate-soft);font-weight:700;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap;}
+.dash-table td{padding:8px 8px;border-bottom:1px solid var(--line);}
+.dash-table tr{cursor:pointer;}
+.dias-chip{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--gray-pale);color:var(--slate);}
+.dias-chip.venc{background:var(--red-pale);color:var(--red);}
+.dias-chip.pronto{background:var(--amber-pale);color:var(--amber-deep);}
+body.theme-dark .dias-chip.pronto{color:#E0A84E;}
+body.theme-dark .dias-chip.venc{color:#E08585;}
 </style>
 </head>
 <body>
@@ -358,6 +410,7 @@ tbody tr:hover{background:#FAF8F1;}
       </div>
     </div>
     <div class="topbar-actions">
+      <button class="btn" id="btnTheme" title="Cambiar entre tema claro y oscuro">🌙 Oscuro</button>
       <span class="conn-pill off" id="connPill"><span class="conn-dot"></span><span id="connText">Sin archivo conectado</span></span>
       <button class="btn" id="btnConnect" title="Conectar un archivo .json en tu computador para autoguardar">Conectar archivo</button>
       <button class="btn" id="btnExport">Exportar respaldo</button>
@@ -393,13 +446,18 @@ tbody tr:hover{background:#FAF8F1;}
   </div>
 
   <div class="tabs">
-    <button class="tab-btn active" data-tab="registros">Registros</button>
+    <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
+    <button class="tab-btn" data-tab="registros">Registros</button>
     <button class="tab-btn" data-tab="resumen">Resumen por cliente</button>
     <button class="tab-btn" data-tab="tecnologia">Tecnología</button>
     <button class="tab-btn" data-tab="clientes">Clientes</button>
   </div>
 
-  <div class="tab-panel active" id="tab-registros">
+  <div class="tab-panel active" id="tab-dashboard">
+    <div id="dashboardBody"></div>
+  </div>
+
+  <div class="tab-panel" id="tab-registros">
     <div class="table-wrap">
       <table id="tblRegistros">
         <thead>
@@ -1398,10 +1456,16 @@ function downloadTemplate(destino){
   if(!window.XLSX){ toast('Módulo Excel no disponible.', 'err'); return; }
   var wb = XLSX.utils.book_new(), ws, name;
   if(destino==='tecnologia'){
-    ws = XLSX.utils.json_to_sheet([{ 'Mes':'2026-03','RUT':'76.993.859-1','Cliente':'IKSO SPA PLAZA OESTE','N° Cotización':'COT-100','N° Factura':13967,'Orden de Compra':'','HES':'','Neto':4161675,'IVA':790718,'Total':4952393,'Estado':'Pendiente','Notas':'' }]);
+    ws = XLSX.utils.json_to_sheet([
+      { 'Mes':'2026-03','RUT':'76.993.859-1','Cliente':'IKSO SPA PLAZA OESTE','N° Cotización':'COT-100','N° Factura':13967,'Orden de Compra':'','HES':'','Neto':4161675,'IVA':790718,'Total':4952393,'Estado':'Pendiente','Notas':'' },
+      { 'Mes':'2026-04','RUT':'','Cliente':'PUNTO BRIKS SPA','N° Cotización':'COT-201','N° Factura':'','Orden de Compra':'','HES':'','Neto':555128,'IVA':'','Total':'','Estado':'Pendiente','Notas':'Solo con Neto: IVA y Total se calculan al importar' }
+    ]);
     XLSX.utils.book_append_sheet(wb, ws, 'Tecnologia'); name='Plantilla_Tecnologia.xlsx';
   } else {
-    ws = XLSX.utils.json_to_sheet([{ 'Cliente':'CENCOSUD JUMBO','Servicio':'GUARDIAS','RUT':'81201000-K','Periodo':'2026-03','N° Factura':13962,'Fecha Facturación':'2026-04-30','Neto':283862442,'IVA':53933864,'Total':337796306,'Orden de Compra':4000434460,'HES':'','Estado':'Factorizado','Entidad Factoring':'Finameris','Glosa':'Servicios de guardias marzo 2026' }]);
+    ws = XLSX.utils.json_to_sheet([
+      { 'Cliente':'CENCOSUD JUMBO','Servicio':'GUARDIAS','RUT':'81201000-K','Periodo':'2026-03','N° Factura':13962,'Fecha Facturación':'2026-04-30','Neto':283862442,'IVA':53933864,'Total':337796306,'Orden de Compra':4000434460,'HES':'','Estado':'Factorizado','Entidad Factoring':'Finameris','Glosa':'Servicios de guardias marzo 2026' },
+      { 'Cliente':'WALMART LIDER','Servicio':'GUARDIAS','RUT':'76.134.941-4','Periodo':'2026-04','N° Factura':13968,'Fecha Facturación':'2026-04-30','Neto':116935603,'IVA':'','Total':'','Orden de Compra':'','HES':'','Estado':'Pendiente','Entidad Factoring':'','Glosa':'Solo con Neto: IVA (19%) y Total se calculan al importar' }
+    ]);
     XLSX.utils.book_append_sheet(wb, ws, 'INGRESO'); name='Plantilla_Cobranza.xlsx';
   }
   XLSX.writeFile(wb, name);
@@ -1426,7 +1490,7 @@ function renderImportModal(){
       '<div class="drop" id="dropZone"><div class="drop-ico">📁</div>' +
         '<div>Arrastra tu archivo <b>.xlsx</b> / <b>.xls</b> aquí, o haz clic para elegirlo</div>' +
         '<input type="file" id="impFile" accept=".xlsx,.xls" style="display:none"></div>' +
-      '<div class="imp-note">Cobranza reconoce: Cliente, Servicio, RUT, Periodo/Mes, N° Factura, Fecha, Neto, IVA, Total, Orden de Compra, HES, Estado, Entidad, Glosa. Los registros se crean o actualizan por cliente+periodo.</div>' +
+      '<div class="imp-note"><b>💡 Montos automáticos:</b> basta con llenar el <b>Neto</b> — el IVA (19%) y el Total se calculan solos al importar. Si pones el Total sin Neto, también se separan. Reconoce: Cliente, Servicio, RUT, Periodo/Mes, N° Factura, Fecha, Neto, IVA, Total, Orden de Compra, HES, Estado, Entidad, Glosa. Se crea o actualiza por cliente+periodo.</div>' +
       '<div class="imp-result" id="impResultBox"></div>' +
     '</div>' +
     '<div class="modal-foot"><span></span><button class="btn btn-primary" id="btnCloseImport2">Listo</button></div>';
@@ -1741,8 +1805,138 @@ function renderClientes(){
   Array.prototype.forEach.call(grid.querySelectorAll('.btn-edit-client'), function(btn){ btn.addEventListener('click', function(e){ e.stopPropagation(); openClientModal(btn.closest('.cliente-card').getAttribute('data-id')); }); });
 }
 
+/* ============================================================
+   DASHBOARD INTERACTIVO + REPORTES
+   ============================================================ */
+function dashAmt(r){ return Number(r.factura.total)||0; }
+function daysUntil(iso){ if(!iso) return null; var d=new Date(iso+'T00:00:00'); var t=new Date(todayISO()+'T00:00:00'); return Math.round((d-t)/86400000); }
+
+function availableForFactoringList(){
+  var out=[];
+  Object.keys(state.records).forEach(function(k){
+    var r=state.records[k]; var c=getClient(r.clientId); if(!c) return;
+    if(r.factura.emitida && r.factura.enviadaSII && !r.factoring.factorizado && !r.pago.pagado) out.push({rec:r, client:c});
+  });
+  out.sort(function(a,b){ return (a.rec.factura.fechaVencimiento||'').localeCompare(b.rec.factura.fechaVencimiento||''); });
+  return out;
+}
+function factoringByEntityMap(){
+  var map={};
+  Object.keys(state.records).forEach(function(k){ var r=state.records[k]; if(r.factoring.factorizado){ var e=r.factoring.entidad||'Sin especificar'; if(!map[e]) map[e]={count:0,monto:0}; map[e].count++; map[e].monto+=(r.factoring.monto||r.factura.total); } });
+  return map;
+}
+function facturadoByMonthMap(){
+  var map={}; state.periods.slice().sort().forEach(function(p){ map[p]={total:0,count:0}; });
+  Object.keys(state.records).forEach(function(k){ var r=state.records[k]; if(r.factura.emitida){ if(!map[r.periodo]) map[r.periodo]={total:0,count:0}; map[r.periodo].total+=dashAmt(r); map[r.periodo].count++; } });
+  return map;
+}
+function statusDistributionMap(){
+  var map={};
+  Object.keys(state.records).forEach(function(k){ var r=state.records[k]; var c=getClient(r.clientId); if(!c) return; var s=computeStatus(r,c); if(!map[s]) map[s]={count:0,monto:0}; map[s].count++; map[s].monto+=dashAmt(r); });
+  return map;
+}
+function barRows(items){
+  var max = Math.max.apply(null, items.map(function(i){ return i.value; }).concat([1]));
+  return items.map(function(i){
+    var pct = Math.max(3, Math.round((i.value/max)*100));
+    return '<div class="bar-row" data-act="'+esc(i.act||'')+'" data-k="'+esc(i.key||'')+'">' +
+      '<div class="bar-label" title="'+esc(i.label)+'">'+esc(i.label)+'</div>' +
+      '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+(i.color||'var(--amber)')+'"></div></div>' +
+      '<div class="bar-val"><b>'+esc(i.valText)+'</b>'+(i.sub?(' · '+esc(i.sub)):'')+'</div></div>';
+  }).join('');
+}
+
+function renderDashboard(){
+  var box = document.getElementById('dashboardBody'); if(!box) return;
+  var recs = Object.keys(state.records).map(function(k){ return state.records[k]; });
+  var facturadoTot=0, factCount=0, cobradoTot=0, cobradoCount=0, factzTot=0, factzCount=0;
+  recs.forEach(function(r){
+    var c=getClient(r.clientId); if(!c) return;
+    if(r.factura.emitida){ facturadoTot+=dashAmt(r); factCount++; }
+    if(r.pago.pagado){ cobradoTot+=(r.pago.monto||dashAmt(r)); cobradoCount++; }
+    if(r.factoring.factorizado){ factzTot+=(r.factoring.monto||dashAmt(r)); factzCount++; }
+  });
+  var avail = availableForFactoringList();
+  var availTot = avail.reduce(function(a,x){ return a+dashAmt(x.rec); },0);
+  var vencidos = avail.filter(function(x){ var d=daysUntil(x.rec.factura.fechaVencimiento); return d!==null && d<0; });
+  var vencTot = vencidos.reduce(function(a,x){ return a+dashAmt(x.rec); },0);
+
+  var cards = [
+    {cls:'k-facturado', lbl:'Total facturado', val:fmtMoney(facturadoTot), sub:factCount+' facturas'},
+    {cls:'k-pagado', lbl:'Cobrado', val:fmtMoney(cobradoTot), sub:cobradoCount+' registros'},
+    {cls:'k-factorizado', lbl:'Factorizado', val:fmtMoney(factzTot), sub:factzCount+' registros'},
+    {cls:'k-pendiente', lbl:'Disponible p/ factorizar', val:fmtMoney(availTot), sub:avail.length+' facturas'},
+    {cls:'k-vencido', lbl:'Vencidas por cobrar', val:vencidos.length, sub:fmtMoney(vencTot)}
+  ];
+  var cardsHtml = '<div class="kpis">' + cards.map(function(k){ return '<div class="kpi '+k.cls+'"><div class="lbl">'+k.lbl+'</div><div class="val">'+k.val+'</div><div class="sub">'+k.sub+'</div></div>'; }).join('') + '</div>';
+
+  // Facturado por mes
+  var fm = facturadoByMonthMap();
+  var mesItems = Object.keys(fm).sort().map(function(p){ return {label:fmtPeriodo(p), value:fm[p].total, valText:fmtMoney(fm[p].total), sub:fm[p].count+' fac', color:'var(--blue)', act:'periodo', key:p}; });
+
+  // Distribución por estado
+  var sd = statusDistributionMap();
+  var estItems = Object.keys(sd).sort(function(a,b){ return sd[b].monto-sd[a].monto; }).map(function(s){ return {label:STATUS_DEFS[s].label, value:sd[s].monto, valText:fmtMoney(sd[s].monto), sub:sd[s].count, color:STATUS_DEFS[s].color, act:'estado', key:s}; });
+
+  // Factoring por entidad
+  var fe = factoringByEntityMap();
+  var entItems = Object.keys(fe).sort(function(a,b){ return fe[b].monto-fe[a].monto; }).map(function(e){ return {label:e, value:fe[e].monto, valText:fmtMoney(fe[e].monto), sub:fe[e].count+' fac', color:'var(--purple)', act:'entidad', key:e}; });
+  var feTotal = Object.keys(fe).reduce(function(a,e){ return a+fe[e].monto; },0);
+  var feCount = Object.keys(fe).reduce(function(a,e){ return a+fe[e].count; },0);
+
+  // Tabla disponibles para factorizar
+  var availRows = avail.slice(0,40).map(function(x){
+    var r=x.rec, c=x.client; var d=daysUntil(r.factura.fechaVencimiento);
+    var chip = d===null ? '<span class="dias-chip">—</span>' : (d<0 ? '<span class="dias-chip venc">vencida '+(Math.abs(d))+'d</span>' : (d<=7 ? '<span class="dias-chip pronto">'+d+'d</span>' : '<span class="dias-chip">'+d+'d</span>'));
+    return '<tr data-client="'+c.id+'" data-periodo="'+r.periodo+'">' +
+      '<td><strong>'+esc(c.cliente)+'</strong><br><span style="color:var(--slate-soft);font-size:11px;">'+esc(c.servicio)+'</span></td>' +
+      '<td>'+fmtPeriodo(r.periodo)+'</td>' +
+      '<td class="mono">'+esc(r.factura.numero||'—')+'</td>' +
+      '<td class="mono">'+fmtMoney(r.factura.total)+'</td>' +
+      '<td class="mono">'+fmtDate(r.factura.fechaVencimiento)+'</td>' +
+      '<td>'+chip+'</td></tr>';
+  }).join('');
+
+  box.innerHTML =
+    cardsHtml +
+    '<div class="dash-grid">' +
+      '<div class="dash-section"><h3>Facturado por mes</h3><div class="sub">Haz clic en un mes para filtrar los registros.</div>'+ barRows(mesItems) +'</div>' +
+      '<div class="dash-section"><h3>Distribución por estado</h3><div class="sub">Monto por estado del proceso. Clic para filtrar.</div>'+ barRows(estItems) +'</div>' +
+    '</div>' +
+    '<div class="dash-section"><h3>Factoring por entidad financiera</h3><div class="sub">'+feCount+' facturas factorizadas · '+fmtMoney(feTotal)+' en total. Clic para ver esas facturas.</div>'+ (entItems.length? barRows(entItems) : '<p style="color:var(--slate-soft)">Aún no hay facturas factorizadas.</p>') +'</div>' +
+    '<div class="dash-section"><h3>Facturas disponibles para factorizar</h3><div class="sub">Emitidas y enviadas al SII, aún no factorizadas ni pagadas — '+avail.length+' facturas · '+fmtMoney(availTot)+'. Clic en una fila para abrirla.</div>' +
+      (avail.length ? '<div style="overflow-x:auto;"><table class="dash-table"><thead><tr><th>Cliente / Servicio</th><th>Periodo</th><th>N° Factura</th><th>Total</th><th>Vencimiento</th><th>Plazo</th></tr></thead><tbody>'+availRows+'</tbody></table></div>'+(avail.length>40?'<p class="sub" style="margin-top:8px;">Mostrando 40 de '+avail.length+'.</p>':'') : '<p style="color:var(--slate-soft)">No hay facturas disponibles para factorizar.</p>') +
+    '</div>';
+
+  // Interactividad
+  Array.prototype.forEach.call(box.querySelectorAll('.bar-row'), function(row){
+    row.addEventListener('click', function(){
+      var act=row.getAttribute('data-act'), k=row.getAttribute('data-k');
+      if(act==='periodo'){ filters.periodo=k; document.getElementById('fPeriodo').value=k; }
+      else if(act==='estado'){ filters.estado=k; document.getElementById('fEstado').value=k; }
+      else if(act==='entidad'){ filters.buscar=k; document.getElementById('fBuscar').value=k; }
+      switchTab('registros'); renderKPIs(); renderTable();
+    });
+  });
+  Array.prototype.forEach.call(box.querySelectorAll('.dash-table tbody tr, .dash-table tr[data-client]'), function(tr){
+    tr.addEventListener('click', function(){ openRecordModal(tr.getAttribute('data-client'), tr.getAttribute('data-periodo')); });
+  });
+}
+
+/* ============================================================
+   TEMA CLARO / OSCURO
+   ============================================================ */
+function applyTheme(t){
+  var dark = (t==='dark');
+  document.body.classList.toggle('theme-dark', dark);
+  var b=document.getElementById('btnTheme'); if(b) b.textContent = dark ? '☀ Claro' : '🌙 Oscuro';
+  try{ localStorage.setItem('cobranza_theme', dark?'dark':'light'); }catch(e){}
+}
+function toggleTheme(){ applyTheme(document.body.classList.contains('theme-dark') ? 'light' : 'dark'); }
+function loadTheme(){ var t='light'; try{ t = localStorage.getItem('cobranza_theme') || 'light'; }catch(e){} applyTheme(t); }
+
 /* ---------- Render general ---------- */
-function renderAll(){ renderFilterOptions(); renderKPIs(); renderTable(); renderMatrix(); renderTech(); renderClientes(); }
+function renderAll(){ renderFilterOptions(); renderKPIs(); renderTable(); renderMatrix(); renderTech(); renderClientes(); renderDashboard(); }
 function switchTab(tab){
   currentTab = tab;
   Array.prototype.forEach.call(document.querySelectorAll('.tab-btn'), function(b){ b.classList.toggle('active', b.getAttribute('data-tab') === tab); });
@@ -1767,10 +1961,11 @@ function initEvents(){
   document.getElementById('btnImportTrigger').addEventListener('click', function(){ document.getElementById('fileImport').click(); });
   document.getElementById('fileImport').addEventListener('change', function(e){ if(e.target.files && e.target.files[0]) importBackup(e.target.files[0]); e.target.value = ''; });
   document.getElementById('btnBulkImportTrigger').addEventListener('click', openImportModal);
+  document.getElementById('btnTheme').addEventListener('click', toggleTheme);
   Array.prototype.forEach.call(document.querySelectorAll('.overlay'), function(ov){ ov.addEventListener('click', function(e){ if(e.target === ov){ ov.classList.remove('show'); if(ov.id === 'overlayRegistro'){ editingRecordKey = null; renderAll(); } } }); });
   document.addEventListener('keydown', function(e){ if(e.key === 'Escape'){ Array.prototype.forEach.call(document.querySelectorAll('.overlay.show'), function(ov){ ov.classList.remove('show'); }); if(editingRecordKey){ editingRecordKey = null; renderAll(); } } });
 }
-function init(){ initEvents(); renderAll(); }
+function init(){ initEvents(); loadTheme(); renderAll(); }
 init();
 
 </script>
