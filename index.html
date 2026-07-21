@@ -76,6 +76,8 @@
   .pill.fact{background:rgba(59,130,246,.15);color:#60a5fa}
   .pill.cobr{background:rgba(34,197,94,.15);color:#4ade80}
   .pill.factz{background:rgba(168,85,247,.15);color:#c084fc}
+  .pill.anul{background:rgba(148,163,184,.18);color:#cbd5e1}
+  .cell.anul{background:rgba(148,163,184,.25);color:#cbd5e1}
 
   .pipe{display:flex;gap:3px;align-items:center}
   .pipe .step{width:22px;height:8px;border-radius:4px;background:var(--line)}
@@ -194,7 +196,7 @@
       <label class="fld">Estado
         <select id="cbEst">
           <option value="">Todos</option>
-          <option>Pendiente</option><option>Facturado</option><option>Cobrado</option><option>Factorizado</option>
+          <option>Pendiente</option><option>Facturado</option><option>Cobrado</option><option>Factorizado</option><option>Anulada</option>
         </select>
       </label>
       <div class="grow"></div>
@@ -222,7 +224,7 @@
       <label class="fld">Estado
         <select id="tcEst">
           <option value="">Todos</option>
-          <option>Pendiente</option><option>Facturado</option><option>Cobrado</option><option>Factorizado</option>
+          <option>Pendiente</option><option>Facturado</option><option>Cobrado</option><option>Factorizado</option><option>Anulada</option>
         </select>
       </label>
       <div class="grow"></div>
@@ -264,7 +266,10 @@
     <div class="panel">
       <h3>📥 Importar / Carga masiva</h3>
       <p style="color:var(--muted);margin-top:0">
-        1) Descarga la plantilla, 2) rellénala en Excel, 3) súbela aquí. Se agregan (o actualizan por N° de factura) los registros.
+        Puedes subir <b>tu Excel original</b> (COBRANZA 2026) directamente: el sistema reconoce las columnas
+        <i>Mes, Rut, Cliente, N° Factura, Fecha De Facturacion, Neto, Iva, Total, Orden De Compra, Hes, Status, Servicio, Glosa</i>.
+        También puedes descargar la plantilla, rellenarla y subirla. Los registros se agregan o se actualizan por N° de factura.
+        El sistema elige la hoja <b>INGRESO</b> o <b>TECNOLOGIA</b> según el destino seleccionado.
       </p>
       <div class="toolbar">
         <button class="btn ok" id="tplCob">⬇ Plantilla Cobranza (.xlsx)</button>
@@ -307,8 +312,18 @@
   <div class="modal" id="modalBox"></div>
 </div>
 <datalist id="servList">
-  <option>Guardias</option><option>Casetas</option><option>CCTV</option>
-  <option>Monitoreo</option><option>Rondas</option><option>Otros</option>
+  <option>Guardias</option><option>Caseta</option><option>Cctv</option><option>Supervisor</option>
+  <option>Refuerzos</option><option>Custodia</option><option>Reciclaje</option><option>Control Camiones</option>
+  <option>Spot</option><option>Otros</option>
+</datalist>
+<datalist id="statusList">
+  <option>Pendiente</option><option>Pendiente De Pago</option><option>Facturado</option>
+  <option>Pagada</option><option>Pagado</option><option>Pago</option><option>Reclamado</option><option>Pronto Pago</option>
+  <option>Factorizada A Financia</option><option>Factorizada Finameris</option><option>Factorizada Capital Expres</option>
+  <option>Factorizada Acf</option><option>Factorizada Incofin</option><option>Factorizada Bci</option><option>Factorizada Bolsa</option>
+  <option>Cedida</option><option>Cedida A Security</option><option>Cedida A Bci Factoring</option><option>Cedida A Simpli</option>
+  <option>Cedida A Incofin</option><option>Cedida A Finameris</option><option>Cedida A Bolsa De Productos De Chile</option>
+  <option>Anulada</option><option>Nc</option>
 </datalist>
 <div class="toast" id="toast"></div>
 
@@ -320,18 +335,46 @@
 const LS_KEY = "cocuyo_cobranza_v1";
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const ESTADOS = ["Pendiente","Facturado","Cobrado","Factorizado"];
-const stClass = {Pendiente:"pend",Facturado:"fact",Cobrado:"cobr",Factorizado:"factz"};
-const SERVICIOS = ["Guardias","Casetas","CCTV","Monitoreo","Rondas","Otros"];
+const stClass = {Pendiente:"pend",Facturado:"fact",Cobrado:"cobr",Factorizado:"factz",Anulada:"anul"};
+const CATS = ["Pendiente","Facturado","Cobrado","Factorizado","Anulada"];
+const SERVICIOS = ["Guardias","Caseta","Cctv","Supervisor","Refuerzos","Custodia","Reciclaje","Control Camiones","Spot","Otros"];
+const STATUS_VOCAB = ["Pendiente","Pendiente De Pago","Facturado","Pagada","Pagado","Pago","Cobrado","Reclamado","Pronto Pago","Factorizada A Financia","Factorizada Finameris","Factorizada Capital Expres","Factorizada Acf","Factorizada Incofin","Factorizada Bci","Factorizada Bolsa","Cedida","Cedida A Security","Cedida A Bci Factoring","Cedida A Simpli","Cedida A Incofin","Cedida A Finameris","Cedida A Bolsa De Productos De Chile","Anulada","Nc"];
+// Normaliza el estado real del Excel a una categoría para colores y resumen
+function stCat(s){const t=String(s||"").toLowerCase().trim();
+  if(!t)return"Pendiente";
+  if(/factoriz|cedid|pronto\s*pago/.test(t))return"Factorizado";
+  if(/anulad|^nc$|\bnc\b|nota\s*de\s*cred/.test(t))return"Anulada";
+  if(/pendiente/.test(t))return /pago/.test(t)?"Facturado":"Pendiente";
+  if(/pagad|pago|cobrad/.test(t))return"Cobrado";
+  if(/reclamad|facturad/.test(t))return"Facturado";
+  return"Facturado";
+}
+// Extrae la entidad financiera desde textos tipo "Factorizada Bci" / "Cedida A Incofin"
+function entidadFrom(s){const m=String(s||"").match(/(?:factorizada|cedida)\s+(?:a\s+)?(.+)/i);return m?m[1].trim():""}
 
 // ---- Default seed (EJEMPLOS - editables/borrables) ----
+const CLIENTES_REALES = [
+  "Administradora De Centros Comerciales Cencosud Spa","Cencosud Retail S.A.","Administradora De Mercado Spa",
+  "Abc S.A","Abarrotes Economicos S.A.","Administradora De Supermercados Hiper Limitada",
+  "Administradora De Supermercados Express Limitada","Sky Airline S.A.","Falabella Retail S.A",
+  "Cencosud Paris","Administradora Tmo S.A.","Walmart Lider","Walmart Sba","Sermob Limitada","Walmart Express",
+  "Abc Quinta","Abc Centro","Abc Sur","Abc Metropolitana",
+  "Carlos Herrera Acero (Conchali)","Carlos Herrera Acero (Cerrillos)","Carlos Herrera Acero (Sta. Rosa)",
+  "Carlos Herrera Acero (Pto Montt)","Carlos Herrera Acero (La Reina)","Carlos Herrera Acero (Enea)",
+  "Edificios Palmas De Reñaca","Mabu","Salfa","Unilever","Carls Jr Nueva Providencia",
+  "Corachi Mall Arauco Maipu","Corachi Mall Vespucio","Corachi Mall Vespucio 2",
+  "Keylogistics Lri","Keylogistics Cdc","Paraclinics","Parking Shopping","Cencosud Inmobiliario",
+  "Cencosud Sisa","Cencosud Jumbo","Cencosud Jumbo Membrillar","United Airlines",
+  "Ikso Spa Kennedy","Ikso Spa Warehouse","Ikso Spa Plaza Oeste","Farmacias Ahumada Spa",
+  "Transportes Nazar","Transportes Nazar Teno","Enzo Lepori Y Asociados Spa","Sodimac S.A.",
+  "Alianza Tech (Dgac)","Alianza Tech (Pte Alto Y Tnt Cruz)","Cenco Rancagua","Punto Briks Spa",
+  "Biologica Laboratorios Spa","A3 Proyectos, Inversiones Y Rentas Spa","Qlf Labs","Hidronor"
+];
 const SEED = {
-  clientes: [
-    {id:cid(), nombre:"Supermercado (ejemplo A)", rut:"76.111.111-1"},
-    {id:cid(), nombre:"Supermercado (ejemplo B)", rut:"77.222.222-2"}
-  ],
+  clientes: CLIENTES_REALES.map(n=>({id:cid(), nombre:n, rut:""})),
   cobranza: [],
   tecnologia: [],
-  meta:{ejemplo:true}
+  meta:{ejemplo:false}
 };
 
 function cid(){return 'id'+Math.random().toString(36).slice(2,10)}
@@ -358,7 +401,10 @@ function save(){
 /* ---------- helpers ---------- */
 function fmtMoney(n){n=Number(n)||0;return "$"+n.toLocaleString("es-CL")}
 function fmtNum(n){n=Number(n)||0;return n.toLocaleString("es-CL")}
-function parseNum(s){if(typeof s==='number')return s;return Number(String(s).replace(/[^\d-]/g,''))||0}
+function parseNum(s){if(typeof s==='number')return s;let t=String(s).trim();if(!t)return 0;
+  // formato chileno: 1.234.567,89  -> quitar puntos de miles, coma decimal a punto
+  t=t.replace(/\./g,'').replace(',','.').replace(/[^\d.\-]/g,'');
+  return Number(t)||0;}
 function addDays(iso,days){if(!iso)return"";const d=new Date(iso+"T00:00:00");if(isNaN(d))return"";d.setDate(d.getDate()+days);return d.toISOString().slice(0,10)}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
 function toast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className="toast show"+(err?" err":"");setTimeout(()=>t.className="toast"+(err?" err":""),2600)}
@@ -379,7 +425,7 @@ document.querySelectorAll('nav button').forEach(b=>{
    ========================================================= */
 function newCob(){
   return {id:cid(), mes:"", anio:nowYear(), clienteId:"", cliente:"", rut:"",
-    servicio:"Guardias", monto:0,
+    servicio:"Guardias", glosa:"", neto:0, iva:0, total:0, monto:0,
     prefEnv:false, prefFecha:"",
     ocReq:true, ocRecibida:false, ocNum:"", ocFecha:"",
     hesRecibida:false, hesNum:"", hesFecha:"",
@@ -401,9 +447,9 @@ function renderCob(){
   let rows=DB.cobranza.filter(r=>{
     if(fMes && r.mes!==fMes) return false;
     if(fCli && r.clienteId!==fCli && r.cliente!==fCli) return false;
-    if(fEst && r.estado!==fEst) return false;
+    if(fEst && stCat(r.estado)!==fEst) return false;
     if(q){
-      const blob=[r.cliente,r.rut,r.facturaNum,r.ocNum,r.hesNum,r.mes,r.entidad].join(" ").toLowerCase();
+      const blob=[r.cliente,r.rut,r.facturaNum,r.ocNum,r.hesNum,r.mes,r.entidad,r.servicio,r.glosa,r.estado].join(" ").toLowerCase();
       if(!blob.includes(q)) return false;
     }
     return true;
@@ -412,7 +458,8 @@ function renderCob(){
   document.getElementById('cbCount').textContent=rows.length;
   if(!rows.length){t.innerHTML=`<tbody><tr><td class="empty">${DB.cobranza.length?'Ningún registro coincide con el filtro.':'Sin registros aún. Usa <b>+ Agregar registro</b> o carga masiva desde <b>Importar</b>.'}</td></tr></tbody>`;return;}
   t.innerHTML=`<thead><tr>
-    <th>Mes serv.</th><th>Año</th><th>Cliente / RUT</th><th>Servicio</th><th>Monto</th>
+    <th>Mes serv.</th><th>Año</th><th>Cliente / RUT</th><th>Servicio</th><th>Glosa</th>
+    <th>Neto</th><th>IVA</th><th>Total</th>
     <th>Prefactura</th><th>OC</th><th>HES/ROC</th><th>Factura</th><th>SII</th>
     <th>Vence</th><th>Factoriz.</th><th>Estado</th><th>Avance</th><th></th>
   </tr></thead><tbody>${rows.map(r=>cobRow(r)).join("")}</tbody>`;
@@ -428,7 +475,10 @@ function cobRow(r){
     <td><input data-f="anio" type="number" value="${esc(r.anio)}" style="width:64px"></td>
     <td><select data-f="clienteId"><option value="">—</option>${cliOpts}</select><div style="font-size:11px;color:var(--muted);padding:2px 7px">${esc(r.rut||'—')}</div></td>
     <td><input data-f="servicio" list="servList" value="${esc(r.servicio||'')}" placeholder="Servicio" style="width:100px"></td>
-    <td class="num"><input data-f="monto" data-money="1" type="text" value="${esc(fmtNum(r.monto))}" style="text-align:right;width:100px"></td>
+    <td><input data-f="glosa" value="${esc(r.glosa||'')}" placeholder="Glosa / detalle" style="width:220px"></td>
+    <td class="num"><input data-f="neto" data-money="1" type="text" value="${esc(fmtNum(r.neto))}" style="text-align:right;width:100px"></td>
+    <td class="num"><input data-f="iva" data-money="1" type="text" value="${esc(fmtNum(r.iva))}" style="text-align:right;width:90px"></td>
+    <td class="num"><input data-f="total" data-money="1" type="text" value="${esc(fmtNum(r.total||r.monto))}" style="text-align:right;width:110px;font-weight:700"></td>
     <td class="center"><input class="chk" type="checkbox" data-f="prefEnv" ${r.prefEnv?'checked':''}><br><input data-f="prefFecha" type="date" value="${esc(r.prefFecha)}" style="width:120px"></td>
     <td class="center"><input class="chk" type="checkbox" data-f="ocRecibida" ${r.ocRecibida?'checked':''}><br><input data-f="ocNum" placeholder="N° OC" value="${esc(r.ocNum)}" style="width:100px"></td>
     <td class="center"><input class="chk" type="checkbox" data-f="hesRecibida" ${r.hesRecibida?'checked':''}><br><input data-f="hesNum" placeholder="N° HES" value="${esc(r.hesNum)}" style="width:100px"></td>
@@ -436,7 +486,7 @@ function cobRow(r){
     <td class="center"><input class="chk" type="checkbox" data-f="enviadaSII" ${r.enviadaSII?'checked':''}></td>
     <td style="color:var(--muted)">${esc(addDays(r.facturaFecha,30))}</td>
     <td class="center"><input class="chk" type="checkbox" data-f="factorizada" ${r.factorizada?'checked':''}><br><input data-f="entidad" placeholder="Entidad" value="${esc(r.entidad)}" style="width:110px"></td>
-    <td><select data-f="estado" class="st-${stClass[r.estado]||'pend'}">${ESTADOS.map(e=>`<option ${e===r.estado?'selected':''}>${e}</option>`).join("")}</select></td>
+    <td><span class="pill ${stClass[stCat(r.estado)]}">${stCat(r.estado)}</span><br><input data-f="estado" list="statusList" value="${esc(r.estado||'')}" placeholder="Estado" style="width:150px"></td>
     <td>${pipeHtml}</td>
     <td class="row-actions"><button class="btn ghost sm" data-act="dup">⧉</button><button class="btn danger sm" data-act="del">✕</button></td>
   </tr>`;
@@ -450,11 +500,12 @@ function bindCobEvents(){
         const f=inp.dataset.f;
         let v = inp.type==='checkbox'?inp.checked:(inp.dataset.money?parseNum(inp.value):(inp.type==='number'?Number(inp.value):inp.value));
         r[f]=v;
+        if(f==='total') r.monto=v;
         if(f==='clienteId'){const c=DB.clientes.find(x=>x.id===v);r.cliente=c?c.nombre:"";r.rut=c?c.rut:"";}
         if(f==='prefEnv' && v && !r.prefFecha){r.prefFecha=new Date().toISOString().slice(0,10);}
         // auto-status suggestions
         autoStatus(r,f,v);
-        save(); renderCob();
+        save(); renderCob(); renderDashboard();
       };
     });
     tr.querySelector('[data-act="del"]').onclick=()=>{ if(confirm("¿Eliminar este registro?")){DB.cobranza=DB.cobranza.filter(x=>x.id!==id);save();renderCob();renderDashboard();}};
@@ -462,47 +513,53 @@ function bindCobEvents(){
   });
 }
 function autoStatus(r,f,v){
-  if(f==='factorizada' && v){r.estado="Factorizado";}
-  else if(f==='enviadaSII' && v && r.estado==='Pendiente'){r.estado="Facturado";}
-  else if(f==='facturaNum' && v && r.estado==='Pendiente'){r.estado="Facturado";}
+  const cat=stCat(r.estado);
+  if(f==='factorizada' && v){ if(cat!=="Factorizado") r.estado="Factorizada"; }
+  else if(f==='facturaNum' && v && (!r.estado||cat==="Pendiente")){ r.estado="Facturado"; }
+  else if(f==='enviadaSII' && v && (!r.estado||cat==="Pendiente")){ r.estado="Facturado"; }
+  if(f==='estado' && stCat(v)==="Factorizado"){ r.factorizada=true; if(!r.entidad) r.entidad=entidadFrom(v); }
 }
 
 /* =========================================================
    TECNOLOGIA
    ========================================================= */
-function newTec(){return {id:cid(),mes:"",anio:nowYear(),rut:"",cliente:"",cotizacion:"",facturaNum:"",ocNum:"",hesNum:"",monto:0,estado:"Pendiente"};}
+function newTec(){return {id:cid(),mes:"",anio:nowYear(),rut:"",cliente:"",cotizacion:"",servicio:"Cctv",glosa:"",facturaNum:"",ocNum:"",hesNum:"",neto:0,iva:0,total:0,monto:0,estado:"Pendiente"};}
 
 function renderTec(){
   const q=(document.getElementById('tcSearch').value||"").toLowerCase();
   const fEst=document.getElementById('tcEst').value;
   let rows=DB.tecnologia.filter(r=>{
     if(fEst && r.estado!==fEst) return false;
-    if(q){const blob=[r.cliente,r.rut,r.cotizacion,r.facturaNum,r.ocNum,r.mes].join(" ").toLowerCase();if(!blob.includes(q))return false;}
+    if(q){const blob=[r.cliente,r.rut,r.cotizacion,r.facturaNum,r.ocNum,r.mes,r.servicio,r.glosa,r.estado].join(" ").toLowerCase();if(!blob.includes(q))return false;}
     return true;
   });
   const t=document.getElementById('tcTable');
   document.getElementById('tcCount').textContent=rows.length;
   if(!rows.length){t.innerHTML=`<tbody><tr><td class="empty">${DB.tecnologia.length?'Ningún servicio coincide con el filtro.':'Sin servicios de tecnología. Usa <b>+ Agregar servicio</b> o carga masiva.'}</td></tr></tbody>`;return;}
   t.innerHTML=`<thead><tr>
-    <th>Mes serv.</th><th>Año</th><th>RUT cliente</th><th>Cliente</th><th>N° Cotización</th>
-    <th>Factura</th><th>Orden de compra</th><th>HES</th><th>Monto</th><th>Estado</th><th></th>
+    <th>Mes serv.</th><th>Año</th><th>RUT cliente</th><th>Cliente</th><th>N° Cotización</th><th>Servicio</th><th>Glosa</th>
+    <th>Factura</th><th>Orden de compra</th><th>HES</th><th>Neto</th><th>IVA</th><th>Total</th><th>Estado</th><th></th>
   </tr></thead><tbody>${rows.map(r=>`
     <tr data-id="${r.id}">
       <td><select data-f="mes">${['<option value=""></option>'].concat(MESES.map(m=>`<option ${m===r.mes?'selected':''}>${m}</option>`)).join("")}</select></td>
       <td><input data-f="anio" type="number" value="${esc(r.anio)}" style="width:64px"></td>
       <td><input data-f="rut" value="${esc(r.rut)}" style="width:110px"></td>
       <td><input data-f="cliente" value="${esc(r.cliente)}" style="width:150px"></td>
-      <td><input data-f="cotizacion" value="${esc(r.cotizacion)}" style="width:110px"></td>
-      <td><input data-f="facturaNum" value="${esc(r.facturaNum)}" style="width:100px"></td>
+      <td><input data-f="cotizacion" value="${esc(r.cotizacion)}" style="width:100px"></td>
+      <td><input data-f="servicio" list="servList" value="${esc(r.servicio||'')}" style="width:100px"></td>
+      <td><input data-f="glosa" value="${esc(r.glosa||'')}" style="width:200px"></td>
+      <td><input data-f="facturaNum" value="${esc(r.facturaNum)}" style="width:90px"></td>
       <td><input data-f="ocNum" value="${esc(r.ocNum)}" style="width:110px"></td>
       <td><input data-f="hesNum" value="${esc(r.hesNum)}" style="width:100px"></td>
-      <td class="num"><input data-f="monto" type="number" value="${esc(r.monto)}" style="text-align:right"></td>
-      <td><select data-f="estado" class="st-${stClass[r.estado]||'pend'}">${ESTADOS.map(e=>`<option ${e===r.estado?'selected':''}>${e}</option>`).join("")}</select></td>
+      <td class="num"><input data-f="neto" data-money="1" type="text" value="${esc(fmtNum(r.neto))}" style="text-align:right;width:95px"></td>
+      <td class="num"><input data-f="iva" data-money="1" type="text" value="${esc(fmtNum(r.iva))}" style="text-align:right;width:85px"></td>
+      <td class="num"><input data-f="total" data-money="1" type="text" value="${esc(fmtNum(r.total||r.monto))}" style="text-align:right;width:105px;font-weight:700"></td>
+      <td><span class="pill ${stClass[stCat(r.estado)]}">${stCat(r.estado)}</span><br><input data-f="estado" list="statusList" value="${esc(r.estado||'')}" style="width:140px"></td>
       <td class="row-actions"><button class="btn danger sm" data-act="del">✕</button></td>
     </tr>`).join("")}</tbody>`;
   document.querySelectorAll('#tcTable tbody tr').forEach(tr=>{
     const id=tr.dataset.id;const r=DB.tecnologia.find(x=>x.id===id);
-    tr.querySelectorAll('[data-f]').forEach(inp=>{inp.onchange=()=>{const f=inp.dataset.f;r[f]=inp.type==='number'?Number(inp.value):inp.value;save();renderTec();};});
+    tr.querySelectorAll('[data-f]').forEach(inp=>{inp.onchange=()=>{const f=inp.dataset.f;let v=inp.dataset.money?parseNum(inp.value):(inp.type==='number'?Number(inp.value):inp.value);r[f]=v;if(f==='total')r.monto=v;save();renderTec();renderDashboard();};});
     tr.querySelector('[data-act="del"]').onclick=()=>{if(confirm("¿Eliminar servicio?")){DB.tecnologia=DB.tecnologia.filter(x=>x.id!==id);save();renderTec();}};
   });
 }
@@ -536,28 +593,29 @@ function renderCli(){
    ========================================================= */
 function renderDashboard(){
   const all=DB.cobranza;
-  const by=e=>all.filter(r=>r.estado===e);
-  const sum=arr=>arr.reduce((a,r)=>a+(Number(r.monto)||0),0);
+  const amt=r=>Number(r.total||r.monto)||0;
+  const by=e=>all.filter(r=>stCat(r.estado)===e);
+  const sum=arr=>arr.reduce((a,r)=>a+amt(r),0);
   const kpis=[
-    {k:"Registros de cobranza",v:all.length,m:MESES.length+" meses posibles",cls:"accent"},
+    {k:"Registros de cobranza",v:all.length,m:"clientes: "+DB.clientes.length,cls:"accent"},
     {k:"Pendientes",v:by("Pendiente").length,m:fmtMoney(sum(by("Pendiente")))},
     {k:"Facturados",v:by("Facturado").length,m:fmtMoney(sum(by("Facturado")))},
     {k:"Cobrados",v:by("Cobrado").length,m:fmtMoney(sum(by("Cobrado")))},
     {k:"Factorizados",v:by("Factorizado").length,m:fmtMoney(sum(by("Factorizado")))},
-    {k:"Monto total",v:fmtMoney(sum(all)),m:"Suma de todos los registros"},
+    {k:"Monto total",v:fmtMoney(sum(all)),m:"Suma de todos los Totales"},
   ];
   document.getElementById('kpis').innerHTML=kpis.map(c=>`<div class="card ${c.cls||''}"><div class="k">${c.k}</div><div class="v">${c.v}</div><div class="m">${c.m}</div></div>`).join("");
 
   // montos por estado
-  document.getElementById('montoCards').innerHTML=ESTADOS.map(e=>{
+  document.getElementById('montoCards').innerHTML=CATS.map(e=>{
     const arr=by(e);
     return `<div class="card"><div class="k"><span class="pill ${stClass[e]}">${e}</span></div><div class="v">${fmtMoney(sum(arr))}</div><div class="m">${arr.length} factura(s)</div></div>`;
   }).join("");
 
   // factorizadas por entidad
-  const fz=all.filter(r=>r.factorizada||r.estado==="Factorizado");
+  const fz=all.filter(r=>r.factorizada||stCat(r.estado)==="Factorizado");
   const byEnt={};
-  fz.forEach(r=>{const e=(r.entidad||"Sin especificar");byEnt[e]=byEnt[e]||{n:0,m:0};byEnt[e].n++;byEnt[e].m+=Number(r.monto)||0;});
+  fz.forEach(r=>{const e=(r.entidad||entidadFrom(r.estado)||"Sin especificar");byEnt[e]=byEnt[e]||{n:0,m:0};byEnt[e].n++;byEnt[e].m+=amt(r);});
   const fbox=document.getElementById('factzBox');
   const ents=Object.keys(byEnt);
   fbox.innerHTML= ents.length? `<div class="cards">${ents.map(e=>`<div class="card"><div class="k">🏦 ${esc(e)}</div><div class="v">${byEnt[e].n}</div><div class="m">${fmtMoney(byEnt[e].m)}</div></div>`).join("")}</div>` : '<div class="empty">Aún no hay facturas factorizadas.</div>';
@@ -580,16 +638,16 @@ function renderMatrix(){
   DB.cobranza.forEach(r=>{if(r.cliente && !clientes.find(c=>c.id===r.clienteId||c.nombre===r.cliente))clientes.push({id:r.clienteId||r.cliente,nombre:r.cliente,rut:r.rut});});
 
   const tbl=document.getElementById('matrixTbl');
-  const priority={Pendiente:1,Facturado:2,Factorizado:3,Cobrado:4};
+  const priority={Pendiente:1,Facturado:2,Factorizado:3,Cobrado:4,Anulada:5};
   let head=`<thead><tr><th class="cli">Cliente</th>${MESES.map(m=>`<th>${m.slice(0,3)}</th>`).join("")}</tr></thead>`;
   let body=clientes.map(c=>{
     const cells=MESES.map(m=>{
       const recs=DB.cobranza.filter(r=>Number(r.anio)===year && r.mes===m && (r.clienteId===c.id||r.cliente===c.nombre));
       if(!recs.length) return `<td><span class="cell none">·</span></td>`;
       // pick "dominant" status = the least advanced (worst) to highlight what's pending
-      let best=recs[0].estado;
-      recs.forEach(r=>{if((priority[r.estado]||1)<(priority[best]||1))best=r.estado;});
-      const label={Pendiente:"PEND",Facturado:"FACT",Cobrado:"OK",Factorizado:"FZ"}[best]||"";
+      let best=stCat(recs[0].estado);
+      recs.forEach(r=>{const c=stCat(r.estado);if((priority[c]||1)<(priority[best]||1))best=c;});
+      const label={Pendiente:"PEND",Facturado:"FACT",Cobrado:"OK",Factorizado:"FZ",Anulada:"ANL"}[best]||"";
       return `<td title="${esc(c.nombre)} · ${m}: ${recs.length} registro(s)"><span class="cell ${stClass[best]}">${label}</span></td>`;
     }).join("");
     return `<tr><td class="cli">${esc(c.nombre)}<div style="font-size:10px;color:var(--muted);font-weight:400">${esc(c.rut||'')}</div></td>${cells}</tr>`;
@@ -622,7 +680,7 @@ function openCobModal(){
       <label class="fld">Año<input id="m_anio" type="number" value="${nowYear()}"></label>
       <label class="fld full">Cliente<select id="m_cli"><option value="">—</option>${cliOpts}</select></label>
       <label class="fld">Servicio<input id="m_serv" list="servList" value="Guardias"></label>
-      <label class="fld">Monto<input id="m_monto" type="text" value="0" placeholder="Ej: 1.500.000"></label>
+      <label class="fld">Total (con IVA)<input id="m_monto" type="text" value="0" placeholder="Ej: 1.500.000"></label>
       <label class="fld">N° Factura<input id="m_fact"></label>
       <label class="fld">N° OC<input id="m_oc"></label>
       <label class="fld">N° HES/ROC<input id="m_hes"></label>
@@ -638,8 +696,9 @@ function openCobModal(){
     const cliId=val('m_cli');const c=DB.clientes.find(x=>x.id===cliId);
     r.clienteId=cliId;r.cliente=c?c.nombre:"";r.rut=c?c.rut:"";
     r.servicio=val('m_serv');
-    r.monto=parseNum(val('m_monto'));r.facturaNum=val('m_fact');r.ocNum=val('m_oc');r.hesNum=val('m_hes');r.estado=val('m_est');
-    if(r.facturaNum && r.estado==='Pendiente') r.estado='Facturado';
+    r.total=parseNum(val('m_monto'));r.monto=r.total;r.facturaNum=val('m_fact');r.ocNum=val('m_oc');r.hesNum=val('m_hes');r.estado=val('m_est');
+    if(r.ocNum)r.ocRecibida=true; if(r.hesNum)r.hesRecibida=true;
+    if(r.facturaNum){r.prefEnv=true;r.enviadaSII=true; if(stCat(r.estado)==='Pendiente')r.estado='Facturado';}
     DB.cobranza.unshift(r);save();closeModal();renderCob();renderDashboard();toast("Registro agregado");
   };
 }
@@ -651,20 +710,52 @@ document.getElementById('modalBg').onclick=e=>{if(e.target.id==='modalBg')closeM
 /* =========================================================
    IMPORT / EXPORT (SheetJS)
    ========================================================= */
+// Columnas para PLANTILLA y EXPORTACIÓN (etiquetas similares a tu Excel real)
 const COB_COLS=[
-  ["Mes servicio","mes"],["Año","anio"],["Cliente","cliente"],["RUT","rut"],["Servicio","servicio"],["Monto","monto"],
+  ["Mes","mes"],["Año","anio"],["Cliente","cliente"],["Rut","rut"],["Servicio","servicio"],["Glosa","glosa"],
+  ["N° Factura","facturaNum"],["Fecha De Facturacion","facturaFecha"],
+  ["Neto","neto"],["Iva","iva"],["Total","total"],
+  ["Orden De Compra","ocNum"],["Hes","hesNum"],["Status","estado"],
   ["Prefactura enviada (SI/NO)","prefEnv"],["Fecha prefactura","prefFecha"],
-  ["OC recibida (SI/NO)","ocRecibida"],["N° OC","ocNum"],["Fecha OC","ocFecha"],
-  ["HES recibida (SI/NO)","hesRecibida"],["N° HES/ROC","hesNum"],["Fecha HES","hesFecha"],
-  ["N° Factura","facturaNum"],["Fecha factura","facturaFecha"],["Enviada SII (SI/NO)","enviadaSII"],
-  ["Factorizada (SI/NO)","factorizada"],["Entidad financiera","entidad"],["Fecha factorización","factFecha"],
-  ["Estado","estado"],["Nota","nota"]
+  ["OC recibida (SI/NO)","ocRecibida"],["HES recibida (SI/NO)","hesRecibida"],
+  ["Enviada SII (SI/NO)","enviadaSII"],["Factorizada (SI/NO)","factorizada"],["Entidad financiera","entidad"],["Nota","nota"]
 ];
 const TEC_COLS=[
-  ["Mes servicio","mes"],["Año","anio"],["RUT cliente","rut"],["Cliente","cliente"],
-  ["N° Cotización","cotizacion"],["Factura","facturaNum"],["Orden de compra","ocNum"],["HES","hesNum"],
-  ["Monto","monto"],["Estado","estado"]
+  ["Mes","mes"],["Año","anio"],["Rut","rut"],["Cliente","cliente"],["N° Cot","cotizacion"],
+  ["Servicio","servicio"],["Glosa","glosa"],["N° Factura","facturaNum"],["Orden De Compra","ocNum"],["Hes","hesNum"],
+  ["Neto","neto"],["Iva","iva"],["Total","total"],["Status Pago","estado"]
 ];
+// Alias de encabezados (normalizados) para importar tu Excel original tal cual
+const COB_ALIASES={
+  mes:["mes","mes servicio","mes de servicio"],
+  anio:["ano","anio","year"],
+  cliente:["cliente","razon social","nombre cliente"],
+  rut:["rut","rut cliente"],
+  servicio:["servicio","tipo servicio","tipo de servicio"],
+  glosa:["glosa","detalle","descripcion","observacion","observaciones"],
+  facturaNum:["n factura","factura","nro factura","numero factura","n de factura","folio","documento"],
+  facturaFecha:["fecha de facturacion","fecha facturacion","fecha factura","fecha","fecha emision"],
+  neto:["neto","monto neto","valor neto"],
+  iva:["iva"],
+  total:["total","monto","monto total","bruto","valor total"],
+  ocNum:["orden de compra","oc","n oc","orden compra","nro oc","n orden de compra"],
+  hesNum:["hes","roc","hes roc","hes o roc"],
+  estado:["status","estado","status pago","estatus","status de pago","estado pago"],
+  cotizacion:["n cot","cot","cotizacion","n cotizacion","numero cotizacion","nro cotizacion"]
+};
+function normH(s){return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[°º.]/g,"").replace(/[^a-z0-9]+/g," ").trim();}
+function normName(s){return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim();}
+function capMes(s){const t=String(s).trim().toLowerCase();const f=MESES.find(m=>m.toLowerCase()===t);return f||(s?s.charAt(0).toUpperCase()+s.slice(1):"");}
+function toISO(v){
+  if(v instanceof Date && !isNaN(v)) return new Date(v.getTime()-v.getTimezoneOffset()*60000).toISOString().slice(0,10);
+  if(typeof v==='number' && v>0){const d=new Date(Math.round((v-25569)*86400*1000));return isNaN(d)?"":d.toISOString().slice(0,10);}
+  const s=String(v||"").trim();if(!s)return"";
+  let m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if(m){let y=m[3];if(y.length===2)y="20"+y;return `${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;}
+  m=s.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
+  if(m)return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  return s;
+}
 function boolFrom(v){if(typeof v==='boolean')return v;const s=String(v||"").trim().toLowerCase();return ["si","sí","x","1","true","verdadero","yes"].includes(s);}
 function boolTo(b){return b?"SI":"NO"}
 
@@ -681,8 +772,8 @@ function downloadTemplate(kind){
   ensureXLSX(()=>{
     const cols=(kind==='cob'?COB_COLS:TEC_COLS).map(c=>c[0]);
     const example=kind==='cob'
-      ? {"Mes servicio":"Enero","Año":nowYear(),"Cliente":"Supermercado Ejemplo","RUT":"76.111.111-1","Servicio":"Guardias","Monto":1500000,"Prefactura enviada (SI/NO)":"SI","Fecha prefactura":"2026-02-05","OC recibida (SI/NO)":"SI","N° OC":"OC-1234","Fecha OC":"2026-02-08","HES recibida (SI/NO)":"SI","N° HES/ROC":"HES-9988","Fecha HES":"2026-02-10","N° Factura":"F-0001","Fecha factura":"2026-02-11","Enviada SII (SI/NO)":"SI","Factorizada (SI/NO)":"NO","Entidad financiera":"","Fecha factorización":"","Estado":"Facturado","Nota":""}
-      : {"Mes servicio":"Enero","Año":nowYear(),"RUT cliente":"76.111.111-1","Cliente":"Cliente Ejemplo","N° Cotización":"COT-100","Factura":"F-2001","Orden de compra":"OC-55","HES":"HES-7","Monto":800000,"Estado":"Pendiente"};
+      ? {"Mes":"Marzo","Año":nowYear(),"Cliente":"Cencosud Jumbo","Rut":"81201000-K","Servicio":"Guardias","Glosa":"Servicios De Guardias Cencosud Jumbo Marzo 2026","N° Factura":13962,"Fecha De Facturacion":"2026-04-05","Neto":283862442,"Iva":53933863.98,"Total":337796305.98,"Orden De Compra":4000434460,"Hes":"","Status":"Pendiente De Pago","Prefactura enviada (SI/NO)":"SI","Fecha prefactura":"","OC recibida (SI/NO)":"SI","HES recibida (SI/NO)":"NO","Enviada SII (SI/NO)":"SI","Factorizada (SI/NO)":"NO","Entidad financiera":"","Nota":""}
+      : {"Mes":"Marzo","Año":nowYear(),"Rut":"81201000-K","Cliente":"Ikso Spa Kennedy","N° Cot":"COT-100","Servicio":"Cctv","Glosa":"Servicios De Cctv Ikso Spa Kennedy Marzo 2026","N° Factura":13967,"Orden De Compra":"","Hes":"","Neto":4161675,"Iva":790718.25,"Total":4952393.25,"Status Pago":"Pendiente"};
     const ws=XLSX.utils.json_to_sheet([example],{header:cols});
     const wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,ws,kind==='cob'?"Cobranza":"Tecnologia");
@@ -696,39 +787,54 @@ function importFile(file){
     const reader=new FileReader();
     reader.onload=e=>{
       try{
-        const wb=XLSX.read(e.target.result,{type:'array'});
-        const ws=wb.Sheets[wb.SheetNames[0]];
+        const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
+        // Elegir la hoja adecuada por nombre (INGRESO/Cobranza o TECNOLOGIA), si no la primera
+        let sheetName=wb.SheetNames[0];
+        const want=target==='cobranza'?/ingreso|cobr/i:/tecnolog/i;
+        const match=wb.SheetNames.find(n=>want.test(n)); if(match)sheetName=match;
+        const ws=wb.Sheets[sheetName];
         const rows=XLSX.utils.sheet_to_json(ws,{defval:""});
-        let added=0,updated=0;
+        let added=0,updated=0,skipped=0;
+        const fieldsCob=["mes","anio","cliente","rut","servicio","glosa","facturaNum","facturaFecha","neto","iva","total","ocNum","hesNum","estado"];
+        const fieldsTec=["mes","anio","cliente","rut","cotizacion","servicio","glosa","facturaNum","ocNum","hesNum","neto","iva","total","estado"];
         rows.forEach(row=>{
+          const nd={}; Object.keys(row).forEach(k=>{nd[normH(k)]=row[k];});
+          const pick=aliases=>{for(const a of (aliases||[])){if(a in nd && nd[a]!=="" && nd[a]!=null)return nd[a];}return undefined;};
+          const rec = target==='cobranza'?newCob():newTec();
+          (target==='cobranza'?fieldsCob:fieldsTec).forEach(key=>{
+            const v=pick(COB_ALIASES[key]);
+            if(v===undefined)return;
+            if(["neto","iva","total"].includes(key)) rec[key]=parseNum(v);
+            else if(key==="anio") rec[key]=Number(String(v).replace(/[^\d]/g,''))||nowYear();
+            else if(["facturaNum","ocNum","hesNum","cotizacion"].includes(key)) rec[key]=String(v).replace(/\.0+$/,'').trim();
+            else if(key==="facturaFecha") rec[key]=toISO(v);
+            else rec[key]=String(v).trim();
+          });
+          rec.monto=rec.total||rec.monto;
+          if(rec.mes) rec.mes=capMes(rec.mes);
+          // Omitir filas vacías
+          if(!rec.cliente && !rec.facturaNum && !rec.total){skipped++;return;}
           if(target==='cobranza'){
-            const rec=newCob();
-            COB_COLS.forEach(([label,key])=>{
-              if(!(label in row))return;
-              let v=row[label];
-              if(["prefEnv","ocRecibida","hesRecibida","enviadaSII","factorizada"].includes(key)) v=boolFrom(v);
-              else if(["monto","anio"].includes(key)) v=Number(v)||0;
-              rec[key]=v;
-            });
-            // link client
-            const c=DB.clientes.find(x=>x.nombre.toLowerCase()===String(rec.cliente).toLowerCase());
-            if(c){rec.clienteId=c.id;rec.rut=rec.rut||c.rut;}
-            else if(rec.cliente){DB.clientes.push({id:cid(),nombre:rec.cliente,rut:rec.rut||""});rec.clienteId=DB.clientes[DB.clientes.length-1].id;}
-            if(!rec.estado)rec.estado="Pendiente";
-            if(rec.facturaNum && rec.estado==="Pendiente")rec.estado="Facturado";
-            // update by factura number if exists
-            const ex=rec.facturaNum && DB.cobranza.find(x=>x.facturaNum&&x.facturaNum===rec.facturaNum);
+            let c=DB.clientes.find(x=>normName(x.nombre)===normName(rec.cliente));
+            if(!c && rec.cliente){c={id:cid(),nombre:rec.cliente,rut:rec.rut||""};DB.clientes.push(c);}
+            if(c){rec.clienteId=c.id; if(!c.rut&&rec.rut)c.rut=rec.rut; if(!rec.rut)rec.rut=c.rut;}
+            if(rec.ocNum)rec.ocRecibida=true;
+            if(rec.hesNum)rec.hesRecibida=true;
+            if(rec.facturaNum){rec.prefEnv=true;rec.enviadaSII=true;}
+            if(stCat(rec.estado)==="Factorizado"){rec.factorizada=true;if(!rec.entidad)rec.entidad=entidadFrom(rec.estado);}
+            if(!rec.estado)rec.estado=rec.facturaNum?"Facturado":"Pendiente";
+            const ex=rec.facturaNum && DB.cobranza.find(x=>x.facturaNum&&String(x.facturaNum)===String(rec.facturaNum));
             if(ex){Object.assign(ex,rec,{id:ex.id});updated++;}else{DB.cobranza.push(rec);added++;}
           }else{
-            const rec=newTec();
-            TEC_COLS.forEach(([label,key])=>{if(!(label in row))return;let v=row[label];if(["monto","anio"].includes(key))v=Number(v)||0;rec[key]=v;});
+            let c=DB.clientes.find(x=>normName(x.nombre)===normName(rec.cliente));
+            if(c && !rec.rut)rec.rut=c.rut;
             if(!rec.estado)rec.estado="Pendiente";
-            const ex=rec.facturaNum && DB.tecnologia.find(x=>x.facturaNum&&x.facturaNum===rec.facturaNum);
+            const ex=rec.facturaNum && DB.tecnologia.find(x=>x.facturaNum&&String(x.facturaNum)===String(rec.facturaNum));
             if(ex){Object.assign(ex,rec,{id:ex.id});updated++;}else{DB.tecnologia.push(rec);added++;}
           }
         });
         save();refreshSelectors();renderAll();
-        document.getElementById('impResult').innerHTML=`<div class="hint">✅ Importación completa: <b>${added}</b> agregados, <b>${updated}</b> actualizados (de ${rows.length} filas).</div>`;
+        document.getElementById('impResult').innerHTML=`<div class="hint">✅ Importación completa: <b>${added}</b> agregados, <b>${updated}</b> actualizados, <b>${skipped}</b> filas vacías omitidas (de ${rows.length}). Hoja: <b>${esc(sheetName)}</b></div>`;
         toast("Datos importados");
       }catch(err){document.getElementById('impResult').innerHTML=`<div class="hint" style="border-color:var(--danger);color:#fca5a5">❌ Error al leer el archivo: ${esc(err.message)}</div>`;toast("Error al importar",true);}
     };
