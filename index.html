@@ -1464,89 +1464,120 @@ function buildClienteLookup(){
   return map;
 }
 
+function resolveClientId(cliente, servicio, rut, lookup){
+  var k = normTextU(cliente+' '+servicio);
+  if(lookup[k]) return lookup[k];
+  var byName = state.clients.filter(function(c){ return normTextU(c.cliente)===normTextU(cliente); });
+  if(servicio){
+    var m = byName.filter(function(c){ return normTextU(c.servicio)===normTextU(servicio); });
+    if(m.length) return m[0].id;
+  } else if(byName.length===1){ return byName[0].id; }
+  var nc = {id:uid('c'), rut:String(rut||''), cliente:String(cliente).trim(), servicio:String(servicio||'GENERAL').trim().toUpperCase(), contacto:'', correo:'', requiereOC:true, activo:true};
+  state.clients.push(nc); lookup[normTextU(nc.cliente+' '+nc.servicio)]=nc.id; return nc.id;
+}
+function payloadPrimary(nd){
+  var factura = String(pick(nd, COB_ALIAS.factura)||'').replace(/\.0+$/,'').trim();
+  var neto = parseMoneyLoose(pick(nd, COB_ALIAS.neto));
+  var iva = parseMoneyLoose(pick(nd, COB_ALIAS.iva));
+  var total = parseMoneyLoose(pick(nd, COB_ALIAS.total));
+  if(!iva && neto) iva = Math.round(neto*0.19);
+  if(!total && neto) total = neto + iva;
+  if(!neto && total){ neto = Math.round(total/1.19); iva = total - neto; }
+  var estadoRaw = pick(nd, COB_ALIAS.estado);
+  return { numero:factura, fecha:excelDateToISO(pick(nd, COB_ALIAS.fecha)), neto:neto, iva:iva, total:total,
+    oc:String(pick(nd, COB_ALIAS.oc)||'').replace(/\.0+$/,'').trim(),
+    hes:String(pick(nd, COB_ALIAS.hes)||'').replace(/\.0+$/,'').trim(),
+    kind:classifyEstado(estadoRaw), entidad:(pick(nd, COB_ALIAS.entidad)||entidadFrom(estadoRaw)),
+    glosa:String(pick(nd, COB_ALIAS.glosa)||'').trim(), tipo:'', tieneAlgo:!!(factura||neto||total) };
+}
+function payloadSegunda(nd){
+  var num = String(pick(nd, COB_ALIAS.factura2)||'').replace(/\.0+$/,'').trim();
+  var neto = parseMoneyLoose(pick(nd, COB_ALIAS.neto2));
+  var total = parseMoneyLoose(pick(nd, COB_ALIAS.total2));
+  var iva = parseMoneyLoose(pick(nd, COB_ALIAS.iva2));
+  if(!num && !neto && !total) return null;
+  if(!iva && neto) iva = Math.round(neto*0.19);
+  if(!total && neto) total = neto + iva;
+  if(!neto && total){ neto = Math.round(total/1.19); iva = total - neto; }
+  var tipoRaw = String(pick(nd, COB_ALIAS.tipo2)||''); var estadoRaw = pick(nd, COB_ALIAS.estado2);
+  return { numero:num, fecha:excelDateToISO(pick(nd, COB_ALIAS.fecha2)), neto:neto, iva:iva, total:total,
+    oc:'', hes:'', kind:classifyEstado(estadoRaw), entidad:(pick(nd, COB_ALIAS.entidad2)||entidadFrom(estadoRaw)),
+    glosa:'', tipo:(/saldo/i.test(tipoRaw)?'Saldo':(/otra/i.test(tipoRaw)?'Otra':(/anticipo/i.test(tipoRaw)?'Anticipo':''))), tieneAlgo:true };
+}
+function applyPrimary(rec, p){
+  rec.prefactura.enviada = true;
+  if(p.oc){ rec.oc.solicitada=true; rec.oc.recibida=true; rec.oc.numero=p.oc; }
+  if(p.hes){ rec.hes.solicitado=true; rec.hes.recibido=true; rec.hes.numero=p.hes; }
+  if(p.tieneAlgo){
+    rec.factura.emitida = true;
+    if(p.numero) rec.factura.numero = p.numero;
+    if(p.fecha){ rec.factura.fechaFacturada=p.fecha; if(!rec.factura.fechaVencimiento) rec.factura.fechaVencimiento=addDaysISO(p.fecha,30); }
+    rec.factura.neto=p.neto; rec.factura.iva=p.iva; rec.factura.total=p.total; rec.factura.enviadaSII=true;
+  }
+  if(p.kind==='pagado'){ rec.pago.pagado=true; if(!rec.pago.monto) rec.pago.monto=rec.factura.total; }
+  else if(p.kind==='factorizado'){ rec.factoring.factorizado=true; if(p.entidad) rec.factoring.entidad=String(p.entidad).trim(); if(!rec.factoring.monto) rec.factoring.monto=rec.factura.total; }
+  else if(p.kind==='reclamado'){ rec.respuesta.estado='refacturada'; }
+  if(p.glosa) rec.notas = rec.notas ? (rec.notas+' | '+p.glosa) : p.glosa;
+}
+function applySegunda(rec, p, tipoDefault){
+  if(!rec.factura2) rec.factura2 = blankFactura2();
+  rec.factura2.activa = true;
+  rec.factura2.tipo = p.tipo || tipoDefault || 'Saldo';
+  rec.factura2.numero = p.numero||'';
+  if(p.fecha){ rec.factura2.fechaFacturada=p.fecha; if(!rec.factura2.fechaVencimiento) rec.factura2.fechaVencimiento=addDaysISO(p.fecha,30); }
+  rec.factura2.neto=p.neto; rec.factura2.iva=p.iva; rec.factura2.total=p.total; rec.factura2.enviadaSII=true;
+  if(p.kind==='pagado'){ rec.factura2.pagado=true; }
+  else if(p.kind==='factorizado'){ rec.factura2.factorizado=true; if(p.entidad) rec.factura2.entidad=String(p.entidad).trim(); }
+  if(p.oc && !rec.oc.numero){ rec.oc.solicitada=true; rec.oc.recibida=true; rec.oc.numero=p.oc; }
+  if(p.hes && !rec.hes.numero){ rec.hes.solicitado=true; rec.hes.recibido=true; rec.hes.numero=p.hes; }
+}
+function makeSpilloverClient(cliente, servicio, rut){
+  var nc = {id:uid('c'), rut:String(rut||''), cliente:String(cliente).trim(), servicio:(String(servicio||'GENERAL').trim().toUpperCase()+' (EXTRA)'), contacto:'', correo:'', requiereOC:true, activo:true};
+  state.clients.push(nc); return nc.id;
+}
 function processCobranzaRows(rows){
   var lookup = buildClienteLookup();
-  var created=0, updated=0, skipped=[];
+  var created=0, updated=0, segundas=0, extra=0, skipped=[];
+  var placed = {}; // key cliente+periodo -> nº de facturas colocadas en ESTA importación
   rows.forEach(function(row, idx){
     var nd = rowLookup(row);
     var cliente = pick(nd, COB_ALIAS.cliente);
     if(cliente===undefined || String(cliente).trim()===''){ return; }
     var servicio = pick(nd, COB_ALIAS.servicio) || '';
     var rut = pick(nd, COB_ALIAS.rut) || '';
-    // separar "Cliente — Servicio" si viene combinado
     var comboClean = String(cliente);
-    if(!servicio && /—|-/.test(comboClean)){ var parts=comboClean.split(/—|-/); if(parts.length>=2){ cliente=parts.slice(0,-1).join('-').trim(); servicio=parts[parts.length-1].trim(); } }
-    var clientId = lookup[normTextU(cliente+' '+servicio)];
-    if(!clientId){ // buscar por nombre solo
-      var byName = state.clients.filter(function(c){ return normTextU(c.cliente)===normTextU(cliente); });
-      if(byName.length===1) clientId = byName[0].id;
-      else if(byName.length>1 && servicio){ var m=byName.filter(function(c){return normTextU(c.servicio)===normTextU(servicio);}); if(m.length) clientId=m[0].id; }
-    }
-    if(!clientId){
-      var nc = {id:uid('c'), rut:String(rut), cliente:String(cliente).trim(), servicio:String(servicio||'GENERAL').trim().toUpperCase(), contacto:'', correo:'', requiereOC:true, activo:true};
-      state.clients.push(nc); lookup[normTextU(nc.cliente+' '+nc.servicio)]=nc.id; clientId=nc.id;
-    }
+    if(!servicio && /—/.test(comboClean)){ var parts=comboClean.split('—'); if(parts.length>=2){ cliente=parts.slice(0,-1).join('—').trim(); servicio=parts[parts.length-1].trim(); } }
+    cliente = String(cliente).trim(); servicio = String(servicio).trim();
+    var clientId = resolveClientId(cliente, servicio, rut, lookup);
     var periodo = normPeriodo(pick(nd, COB_ALIAS.periodo));
-    if(!periodo){ skipped.push('Fila '+(idx+2)+': periodo/mes inválido'); return; }
-    var existed = !!getRecord(clientId, periodo);
-    var rec = ensureRecord(clientId, periodo);
+    if(!periodo){ skipped.push('Fila '+(idx+2)+': periodo/mes vacío o inválido'); return; }
     if(rut && !getClient(clientId).rut) getClient(clientId).rut = String(rut);
 
-    var factura = String(pick(nd, COB_ALIAS.factura)||'').replace(/\.0+$/,'').trim();
-    var fecha = excelDateToISO(pick(nd, COB_ALIAS.fecha));
-    var neto = parseMoneyLoose(pick(nd, COB_ALIAS.neto));
-    var iva = parseMoneyLoose(pick(nd, COB_ALIAS.iva));
-    var total = parseMoneyLoose(pick(nd, COB_ALIAS.total));
-    var oc = String(pick(nd, COB_ALIAS.oc)||'').replace(/\.0+$/,'').trim();
-    var hes = String(pick(nd, COB_ALIAS.hes)||'').replace(/\.0+$/,'').trim();
-    var estadoRaw = pick(nd, COB_ALIAS.estado);
-    var kind = classifyEstado(estadoRaw);
-    var entidad = pick(nd, COB_ALIAS.entidad) || entidadFrom(estadoRaw);
-    var glosa = String(pick(nd, COB_ALIAS.glosa)||'').trim();
+    var P = payloadPrimary(nd);
+    var S = payloadSegunda(nd);
+    var key = clientId+'__'+periodo;
+    var occ = placed[key] || 0;
 
-    rec.prefactura.enviada = true;
-    if(oc){ rec.oc.solicitada=true; rec.oc.recibida=true; rec.oc.numero=oc; }
-    if(hes){ rec.hes.solicitado=true; rec.hes.recibido=true; rec.hes.numero=hes; }
-    if(factura || neto || total){
-      rec.factura.emitida = true;
-      if(factura) rec.factura.numero = factura;
-      if(fecha){ rec.factura.fechaFacturada=fecha; if(!rec.factura.fechaVencimiento) rec.factura.fechaVencimiento=addDaysISO(fecha,30); }
-      if(!iva && neto) iva = Math.round(neto*0.19);
-      if(!total && neto) total = neto + iva;
-      if(!neto && total){ neto = Math.round(total/1.19); iva = total - neto; }
-      rec.factura.neto=neto; rec.factura.iva=iva; rec.factura.total=total;
-      rec.factura.enviadaSII = true;
+    if(occ === 0){
+      var preExisted = !!getRecord(clientId, periodo);
+      var rec = ensureRecord(clientId, periodo);
+      applyPrimary(rec, P);
+      placed[key] = 1;
+      if(S){ applySegunda(rec, S, 'Anticipo'); placed[key]=2; segundas++; }
+      if(preExisted) updated++; else created++;
+    } else if(occ === 1){
+      var rec1 = getRecord(clientId, periodo);
+      if(rec1 && !rec1.factura.emitida && P.tieneAlgo){ applyPrimary(rec1, P); }
+      else { applySegunda(rec1, P, 'Saldo'); segundas++; }
+      placed[key] = 2;
+      if(S){ var sidA=makeSpilloverClient(cliente, servicio, rut); var rsA=ensureRecord(sidA, periodo); applyPrimary(rsA, S); extra++; }
+    } else {
+      var sid=makeSpilloverClient(cliente, servicio, rut); var rs=ensureRecord(sid, periodo);
+      applyPrimary(rs, P); extra++;
+      if(S){ applySegunda(rs, S, 'Saldo'); segundas++; }
     }
-    if(kind==='pagado'){ rec.pago.pagado=true; if(!rec.pago.monto) rec.pago.monto=rec.factura.total; }
-    else if(kind==='factorizado'){ rec.factoring.factorizado=true; if(entidad) rec.factoring.entidad=String(entidad).trim(); if(!rec.factoring.monto) rec.factoring.monto=rec.factura.total; }
-    else if(kind==='reclamado'){ rec.respuesta.estado='refacturada'; }
-    if(glosa) rec.notas = rec.notas ? (rec.notas+' | '+glosa) : glosa;
-
-    // Segunda factura (anticipo / saldo)
-    var f2num = String(pick(nd, COB_ALIAS.factura2)||'').replace(/\.0+$/,'').trim();
-    var f2neto = parseMoneyLoose(pick(nd, COB_ALIAS.neto2));
-    var f2total = parseMoneyLoose(pick(nd, COB_ALIAS.total2));
-    var f2iva = parseMoneyLoose(pick(nd, COB_ALIAS.iva2));
-    if(f2num || f2neto || f2total){
-      if(!f2iva && f2neto) f2iva = Math.round(f2neto*0.19);
-      if(!f2total && f2neto) f2total = f2neto + f2iva;
-      if(!f2neto && f2total){ f2neto = Math.round(f2total/1.19); f2iva = f2total - f2neto; }
-      var f2fecha = excelDateToISO(pick(nd, COB_ALIAS.fecha2));
-      var f2tipoRaw = String(pick(nd, COB_ALIAS.tipo2)||'Anticipo');
-      var f2kind = classifyEstado(pick(nd, COB_ALIAS.estado2));
-      var f2ent = pick(nd, COB_ALIAS.entidad2) || entidadFrom(pick(nd, COB_ALIAS.estado2));
-      if(!rec.factura2) rec.factura2 = blankFactura2();
-      rec.factura2.activa = true;
-      rec.factura2.tipo = (/saldo/i.test(f2tipoRaw) ? 'Saldo' : (/otra/i.test(f2tipoRaw) ? 'Otra' : 'Anticipo'));
-      rec.factura2.numero = f2num;
-      if(f2fecha){ rec.factura2.fechaFacturada=f2fecha; if(!rec.factura2.fechaVencimiento) rec.factura2.fechaVencimiento=addDaysISO(f2fecha,30); }
-      rec.factura2.neto=f2neto; rec.factura2.iva=f2iva; rec.factura2.total=f2total; rec.factura2.enviadaSII=true;
-      if(f2kind==='pagado'){ rec.factura2.pagado=true; }
-      else if(f2kind==='factorizado'){ rec.factura2.factorizado=true; if(f2ent) rec.factura2.entidad=String(f2ent).trim(); }
-    }
-    if(existed) updated++; else created++;
   });
-  return {created:created, updated:updated, skipped:skipped};
+  return {created:created, updated:updated, segundas:segundas, extra:extra, skipped:skipped};
 }
 
 function processTechRows(rows){
@@ -1595,7 +1626,10 @@ function doImport(file, destino){
     }catch(err){ setImportResult('<span style="color:var(--red)">No se pudo leer el archivo Excel.</span>'); return; }
     var res = destino==='tecnologia' ? processTechRows(rows) : processCobranzaRows(rows);
     persist();
-    var msg = '✅ '+res.created+' creados, '+res.updated+' actualizados' + (res.skipped.length? (', '+res.skipped.length+' filas omitidas') : '') + ' (de '+rows.length+' filas).';
+    var det = '';
+    if(res.segundas) det += ', '+res.segundas+' como 2ª factura';
+    if(res.extra) det += ', '+res.extra+' en registro extra';
+    var msg = '✅ '+res.created+' creados, '+res.updated+' actualizados'+det + (res.skipped.length? (', '+res.skipped.length+' filas omitidas') : '') + ' (de '+rows.length+' filas).';
     setImportResult('<div style="color:var(--green);font-weight:600;">'+msg+'</div>' + (res.skipped.length? '<div class="hint" style="margin-top:6px;">'+res.skipped.slice(0,6).map(esc).join('<br>')+'</div>' : ''));
     toast(msg, res.skipped.length?'':'ok');
   };
