@@ -619,12 +619,14 @@ function fmtPeriodo(p){
   var meses=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   return meses[m-1] + ' ' + y;
 }
-function todayISO(){ return new Date().toISOString().slice(0,10); }
+function todayISO(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function addDaysISO(iso, days){
   if(!iso) return '';
-  var d = new Date(iso+'T00:00:00');
-  d.setDate(d.getDate()+days);
-  return d.toISOString().slice(0,10);
+  var m = String(iso).slice(0,10).match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if(!m) return '';
+  var d = new Date(Date.UTC(+m[1], (+m[2])-1, +m[3]));
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
 }
 function currentPeriodo(){
   var d = new Date();
@@ -1269,11 +1271,20 @@ function techLine(t){
   var emit = (t.estado!=='anulada') && !!(t.factura || t.estado==='facturado' || t.estado==='pagado' || t.estado==='factorizado');
   return { total:Number(t.total)||0, emitida:emit, factorizado:(t.estado==='factorizado'), pagado:(t.estado==='pagado'), venc:t.fechaVencimiento||'', fechaFac:t.fechaFactura||'' };
 }
+/* Traduce el estado de un servicio de tecnología a la misma clave que el filtro de Estado de cobranza */
+function techStatusKey(t){
+  if(t.estado==='anulada') return 'anulada';
+  var b = lineBucket(techLine(t)); // pagado / factorizado / facturado / vencido / otro
+  return (b==='otro') ? 'sin_prefactura' : b;
+}
 
 function filteredTech(){
   var q = (filters.buscar||'').toLowerCase();
+  var cliNombre = filters.cliente ? ((getClient(filters.cliente)||{}).cliente||'') : '';
   return state.tech.slice().filter(function(t){
     if(filters.periodo && t.periodo !== filters.periodo) return false;
+    if(cliNombre && normTextU(t.cliente)!==normTextU(cliNombre)) return false;
+    if(filters.estado && techStatusKey(t)!==filters.estado) return false;
     if(q){
       var hay = [t.cliente,t.rut,t.cotizacion,t.factura,t.oc,t.hes].join(' ').toLowerCase();
       if(hay.indexOf(q)===-1) return false;
@@ -1756,7 +1767,9 @@ function renderFilterOptions(){
     .map(function(c){ return '<option value="'+c.id+'">'+esc(c.cliente)+' — '+esc(c.servicio)+'</option>'; }).join('');
   selCliente.value = curCliente;
   var selPeriodo = document.getElementById('fPeriodo'); var curPeriodo = filters.periodo;
-  selPeriodo.innerHTML = '<option value="">Todos</option>' + state.periods.slice().sort().reverse().map(function(p){ return '<option value="'+p+'">'+fmtPeriodo(p)+'</option>'; }).join('');
+  var periodos = state.periods.slice();
+  state.tech.forEach(function(t){ if(t.periodo && periodos.indexOf(t.periodo)===-1) periodos.push(t.periodo); });
+  selPeriodo.innerHTML = '<option value="">Todos</option>' + periodos.sort().reverse().map(function(p){ return '<option value="'+p+'">'+fmtPeriodo(p)+'</option>'; }).join('');
   selPeriodo.value = curPeriodo;
   var selEstado = document.getElementById('fEstado'); var curEstado = filters.estado;
   selEstado.innerHTML = '<option value="">Todos</option>' + Object.keys(STATUS_DEFS).map(function(k){ return '<option value="'+k+'">'+STATUS_DEFS[k].label+'</option>'; }).join('');
@@ -2455,9 +2468,9 @@ function switchTab(tab){
 /* ---------- Inicialización ---------- */
 function initEvents(){
   Array.prototype.forEach.call(document.querySelectorAll('.tab-btn'), function(b){ b.addEventListener('click', function(){ switchTab(b.getAttribute('data-tab')); }); });
-  document.getElementById('fCliente').addEventListener('change', function(e){ filters.cliente = e.target.value; renderKPIs(); renderTable(); });
+  document.getElementById('fCliente').addEventListener('change', function(e){ filters.cliente = e.target.value; renderKPIs(); renderTable(); renderTech(); });
   document.getElementById('fPeriodo').addEventListener('change', function(e){ filters.periodo = e.target.value; renderKPIs(); renderTable(); renderTech(); });
-  document.getElementById('fEstado').addEventListener('change', function(e){ filters.estado = e.target.value; renderKPIs(); renderTable(); });
+  document.getElementById('fEstado').addEventListener('change', function(e){ filters.estado = e.target.value; renderKPIs(); renderTable(); renderTech(); });
   document.getElementById('fBuscar').addEventListener('input', debounce(function(e){ filters.buscar = e.target.value; renderKPIs(); renderTable(); renderTech(); }, 200));
   document.getElementById('btnClearFilters').addEventListener('click', function(){ filters = {cliente:'', periodo:'', estado:'', buscar:''}; document.getElementById('fBuscar').value = ''; renderFilterOptions(); renderKPIs(); renderTable(); renderTech(); });
   document.getElementById('btnNuevoRegistro').addEventListener('click', openNuevoRegistroModal);
