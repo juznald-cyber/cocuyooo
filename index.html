@@ -592,6 +592,11 @@ body.theme-dark .dias-chip.venc{color:#E08585;}
   <div class="modal modal-sm" id="modalImport"></div>
 </div>
 
+<!-- Modal: editar entidad financiera -->
+<div class="overlay" id="overlayEntidad">
+  <div class="modal modal-sm" id="modalEntidad"></div>
+</div>
+
 
 <script>
 /* ============================================================
@@ -1034,6 +1039,7 @@ var currentTab = 'registros';
 var editingRecordKey = null;
 var editingClientId = null;
 var editingTechId = null;
+var editingEntidadIndex = null;
 
 function recordKey(clientId, periodo){ return clientId + '__' + periodo; }
 
@@ -2229,10 +2235,13 @@ function renderEntidades(){
   renderEntidadesDatalist();
   var box=document.getElementById('entidadesChips'); if(!box) return;
   box.innerHTML = (state.entidades && state.entidades.length)
-    ? state.entidades.map(function(e,i){ return '<span style="display:inline-flex;align-items:center;gap:7px;background:var(--purple-pale);color:var(--purple);padding:5px 11px;border-radius:20px;font-size:12px;font-weight:600;">'+esc(e.razon)+(e.rut?(' <span style="opacity:.8;font-weight:500;">· '+esc(e.rut)+'</span>'):'')+' <span data-del="'+i+'" title="Eliminar" style="cursor:pointer;font-weight:800;opacity:.7;">×</span></span>'; }).join('')
+    ? state.entidades.map(function(e,i){ return '<span style="display:inline-flex;align-items:center;gap:7px;background:var(--purple-pale);color:var(--purple);padding:5px 11px;border-radius:20px;font-size:12px;font-weight:600;">'+esc(e.razon)+(e.rut?(' <span style="opacity:.8;font-weight:500;">· '+esc(e.rut)+'</span>'):' <span style="opacity:.6;font-weight:500;font-style:italic;">· sin RUT</span>')+' <span data-edit="'+i+'" title="Editar (agregar/cambiar RUT o razón social)" style="cursor:pointer;font-weight:800;opacity:.7;">✎</span> <span data-del="'+i+'" title="Eliminar" style="cursor:pointer;font-weight:800;opacity:.7;">×</span></span>'; }).join('')
     : '<span style="color:var(--slate-soft);font-size:12px;">Sin entidades registradas. Agrega una abajo.</span>';
   Array.prototype.forEach.call(box.querySelectorAll('[data-del]'), function(x){
-    x.addEventListener('click', function(){ var i=parseInt(x.getAttribute('data-del'),10); state.entidades.splice(i,1); persist(); });
+    x.addEventListener('click', function(){ var i=parseInt(x.getAttribute('data-del'),10); if(confirm('¿Eliminar la entidad "'+state.entidades[i].razon+'"?')){ state.entidades.splice(i,1); persist(); } });
+  });
+  Array.prototype.forEach.call(box.querySelectorAll('[data-edit]'), function(x){
+    x.addEventListener('click', function(){ openEntidadModal(parseInt(x.getAttribute('data-edit'),10)); });
   });
 }
 function addEntidad(){
@@ -2241,6 +2250,44 @@ function addEntidad(){
   if(!razon){ toast('Ingresa la razón social.', 'err'); return; }
   if((state.entidades||[]).map(function(x){return (x.razon||'').toLowerCase();}).indexOf(razon.toLowerCase())>-1){ toast('Esa entidad ya existe.', 'err'); return; }
   state.entidades.push({razon:razon, rut:rut}); elR.value=''; if(elRut) elRut.value=''; persist(); toast('Entidad agregada.', 'ok');
+}
+/* Propaga el cambio de razón social a todos los registros factorizados a esa entidad */
+function renombrarEntidadEnRegistros(oldR, newR){
+  if(!oldR || oldR===newR) return 0;
+  var n=0; var eq=function(v){ return (v||'').toLowerCase().trim()===oldR.toLowerCase().trim(); };
+  Object.keys(state.records).forEach(function(k){ var r=state.records[k];
+    if(r.factoring && eq(r.factoring.entidad)){ r.factoring.entidad=newR; n++; }
+    if(r.factura2 && eq(r.factura2.entidad)){ r.factura2.entidad=newR; n++; }
+  });
+  state.tech.forEach(function(t){ if(eq(t.entidad)){ t.entidad=newR; n++; } });
+  return n;
+}
+function openEntidadModal(i){ editingEntidadIndex=i; renderEntidadModal(); document.getElementById('overlayEntidad').classList.add('show'); }
+function closeEntidadModal(){ document.getElementById('overlayEntidad').classList.remove('show'); editingEntidadIndex=null; }
+function renderEntidadModal(){
+  var e = state.entidades[editingEntidadIndex]; if(!e){ closeEntidadModal(); return; }
+  var modal=document.getElementById('modalEntidad');
+  modal.innerHTML =
+    '<div class="modal-head"><div><h2>Editar entidad financiera</h2><p>Agrega o corrige el RUT. Si cambias la razón social, se actualizará en todos los registros factorizados a esta entidad.</p></div><button class="modal-close" id="btnCloseEnt">&times;</button></div>' +
+    '<div class="modal-body"><div class="field-grid">' +
+      '<div class="field"><label>Razón social</label><input type="text" id="ent_razon" value="'+esc(e.razon)+'"></div>' +
+      '<div class="field"><label>RUT</label><input type="text" id="ent_rut" value="'+esc(e.rut||'')+'" placeholder="76.xxx.xxx-x"></div>' +
+    '</div></div>' +
+    '<div class="modal-foot"><span></span><div style="display:flex;gap:8px;"><button class="btn" id="btnCancelEnt">Cancelar</button><button class="btn btn-primary" id="btnSaveEnt">Guardar</button></div></div>';
+  document.getElementById('btnCloseEnt').onclick = closeEntidadModal;
+  document.getElementById('btnCancelEnt').onclick = closeEntidadModal;
+  document.getElementById('btnSaveEnt').onclick = function(){
+    var nuevaRazon=(document.getElementById('ent_razon').value||'').trim();
+    var nuevoRut=(document.getElementById('ent_rut').value||'').trim();
+    if(!nuevaRazon){ toast('La razón social es obligatoria.', 'err'); return; }
+    var dup = state.entidades.some(function(x,idx){ return idx!==editingEntidadIndex && (x.razon||'').toLowerCase()===nuevaRazon.toLowerCase(); });
+    if(dup){ toast('Ya existe otra entidad con esa razón social.', 'err'); return; }
+    var oldRazon = e.razon;
+    var cambiados = renombrarEntidadEnRegistros(oldRazon, nuevaRazon);
+    e.razon = nuevaRazon; e.rut = nuevoRut;
+    closeEntidadModal(); persist();
+    toast('Entidad actualizada'+(cambiados?(' · '+cambiados+' registro(s) actualizados'):'')+'.', 'ok');
+  };
 }
 
 /* ---------- Exportar resumen a Excel (.xlsx) ---------- */
