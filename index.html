@@ -191,6 +191,11 @@ a{color:inherit;}
 }
 .filterbar .search{min-width:200px;flex:1;}
 .filterbar .spacer{flex:1;}
+.adj-form{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;}
+.adj-form .fgroup{display:flex;flex-direction:column;gap:4px;}
+.adj-form label{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--slate-soft);}
+.adj-form select,.adj-form input[type=text],.adj-form input[type=file]{border:1px solid var(--line-strong);border-radius:7px;padding:7px 9px;background:#fff;min-width:150px;color:var(--ink);}
+.adj-cat-badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--amber-pale);color:var(--amber-deep);}
 
 /* ---------- Tabs ---------- */
 .tabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--line);flex-wrap:wrap;}
@@ -500,15 +505,18 @@ body.theme-dark .dias-chip.venc{color:#E08585;}
   <div class="filterbar">
     <div class="fgroup">
       <label>Cliente</label>
-      <select id="fCliente"><option value="">Todos</option></select>
+      <input type="text" id="fCliente" list="dlCliente" placeholder="Todos — escribe para buscar" autocomplete="off">
+      <datalist id="dlCliente"></datalist>
     </div>
     <div class="fgroup">
       <label>Periodo</label>
-      <select id="fPeriodo"><option value="">Todos</option></select>
+      <input type="text" id="fPeriodo" list="dlPeriodo" placeholder="Todos — escribe para buscar" autocomplete="off">
+      <datalist id="dlPeriodo"></datalist>
     </div>
     <div class="fgroup">
       <label>Estado</label>
-      <select id="fEstado"><option value="">Todos</option></select>
+      <input type="text" id="fEstado" list="dlEstado" placeholder="Todos — escribe para buscar" autocomplete="off">
+      <datalist id="dlEstado"></datalist>
     </div>
     <div class="fgroup" style="flex:1;">
       <label>Buscar</label>
@@ -525,6 +533,7 @@ body.theme-dark .dias-chip.venc{color:#E08585;}
     <button class="tab-btn" data-tab="resumen">Resumen por cliente</button>
     <button class="tab-btn" data-tab="tecnologia">Tecnología</button>
     <button class="tab-btn" data-tab="clientes">Clientes</button>
+    <button class="tab-btn" data-tab="respaldos">📎 Respaldos</button>
   </div>
 
   <div class="tab-panel active" id="tab-dashboard">
@@ -632,6 +641,35 @@ body.theme-dark .dias-chip.venc{color:#E08585;}
       <span>Cliente / Servicio</span><span>RUT</span><span>Contacto</span><span>Exige OC</span><span></span>
     </div>
     <div class="clientes-grid" id="clientesGrid"></div>
+  </div>
+
+  <div class="tab-panel" id="tab-respaldos">
+    <div class="dash-section" style="margin-bottom:14px;">
+      <h3 style="margin:0 0 4px;">Adjuntar respaldo</h3>
+      <p style="font-size:12.5px;color:var(--slate);margin:0 0 12px;max-width:720px;">Sube el PDF o la imagen de tus facturas, órdenes de compra (OC) y HES/ROC. Se guardan en la nube junto a tus datos y podrás buscarlos y descargarlos cuando los necesites. Máximo 700 KB por archivo.</p>
+      <div class="adj-form">
+        <div class="fgroup"><label>Archivo (PDF o imagen)</label><input type="file" id="adjFile" accept=".pdf,image/*"></div>
+        <div class="fgroup"><label>Tipo</label><select id="adjCat"><option value="factura">Factura</option><option value="oc">Orden de compra</option><option value="hes">HES / ROC</option><option value="otro">Otro</option></select></div>
+        <div class="fgroup"><label>N° de referencia</label><input type="text" id="adjRef" placeholder="Ej: factura 12345"></div>
+        <div class="fgroup"><label>Cliente (opcional)</label><input type="text" id="adjCliente" placeholder="Nombre del cliente"></div>
+        <div class="fgroup" style="flex:1;min-width:180px;"><label>Nota (opcional)</label><input type="text" id="adjNota" placeholder="Descripción, mes de servicio…"></div>
+        <div class="fgroup" style="align-self:flex-end;"><button class="btn btn-primary" id="btnSubirAdj">Adjuntar respaldo</button></div>
+      </div>
+    </div>
+    <div class="filterbar" style="margin-bottom:12px;">
+      <div class="fgroup"><label>Tipo</label>
+        <select id="adjCatFilter"><option value="">Todos</option><option value="factura">Factura</option><option value="oc">Orden de compra</option><option value="hes">HES / ROC</option><option value="otro">Otro</option></select>
+      </div>
+      <div class="fgroup" style="flex:1;"><label>Buscar respaldo</label>
+        <input type="search" class="search" id="adjSearch" placeholder="N° factura, cliente, nombre de archivo, nota…">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="tblRespaldos">
+        <thead><tr><th>Tipo</th><th>N° ref.</th><th>Cliente</th><th>Archivo</th><th>Nota</th><th>Tamaño</th><th>Fecha</th><th style="text-align:right;">Acciones</th></tr></thead>
+        <tbody id="respaldosBody"></tbody>
+      </table>
+    </div>
   </div>
 
 </div>
@@ -1107,7 +1145,8 @@ var state = {
   records: JSON.parse(JSON.stringify(DEFAULT_RECORDS)),
   periods: JSON.parse(JSON.stringify(DEFAULT_PERIODS)),
   tech: JSON.parse(JSON.stringify(DEFAULT_TECH)),
-  entidades: DEFAULT_ENTIDADES()
+  entidades: DEFAULT_ENTIDADES(),
+  adjuntos: []
 };
 var LS_KEY = 'cobranza_estado_v1';
 var fileHandle = null;
@@ -1239,7 +1278,7 @@ function checkpointState(rec, client){
 
 /* ---------- Persistencia ---------- */
 function serializeState(){
-  return JSON.stringify({ version:3, savedAt:new Date().toISOString(), clients:state.clients, records:state.records, periods:state.periods, tech:state.tech, entidades:state.entidades }, null, 1);
+  return JSON.stringify({ version:3, savedAt:new Date().toISOString(), clients:state.clients, records:state.records, periods:state.periods, tech:state.tech, entidades:state.entidades, adjuntos:state.adjuntos }, null, 1);
 }
 function loadFromObject(obj){
   if(!obj || !obj.clients || !obj.records){ toast('El archivo no tiene el formato esperado.', 'err'); return false; }
@@ -1248,6 +1287,7 @@ function loadFromObject(obj){
   state.periods = obj.periods || [];
   state.tech = obj.tech || [];
   state.entidades = normalizeEntidades(obj.entidades);
+  state.adjuntos = obj.adjuntos || [];
   sortPeriods();
   saveLocal();
   renderAll();
@@ -1850,20 +1890,55 @@ function filteredRecords(){
 function getPath(obj, path){ return path.split('.').reduce(function(o,k){ return (o||{})[k]; }, obj); }
 function setPath(obj, path, value){ var parts=path.split('.'); var o=obj; for(var i=0;i<parts.length-1;i++){ o=o[parts[i]]; } o[parts[parts.length-1]]=value; }
 
-/* ---------- Render: filtros ---------- */
+/* ---------- Render: filtros (combobox: desplegable + búsqueda al tipear) ---------- */
+var filterOpts = { cliente:[], periodo:[], estado:[] };
+function fillDatalist(id, opts){
+  document.getElementById(id).innerHTML = opts.map(function(o){ return '<option value="'+esc(o.label)+'"></option>'; }).join('');
+}
+function setFilterInput(inputId, kind){
+  var el = document.getElementById(inputId); if(!el) return;
+  var val = filters[kind];
+  if(!val){ el.value = ''; return; }
+  var found = filterOpts[kind].filter(function(o){ return o.value === val; })[0];
+  el.value = found ? found.label : '';
+}
+function resolveFilter(kind, text){
+  text = (text || '').trim().toLowerCase();
+  if(!text) return '';
+  var opts = filterOpts[kind];
+  var exact = opts.filter(function(o){ return o.label.toLowerCase() === text; });
+  if(exact.length) return exact[0].value;
+  var contains = opts.filter(function(o){ return o.label.toLowerCase().indexOf(text) !== -1; });
+  if(contains.length === 1) return contains[0].value;
+  return null; /* ambiguo o sin coincidencia: no cambia el filtro todavía */
+}
 function renderFilterOptions(){
-  var selCliente = document.getElementById('fCliente'); var curCliente = filters.cliente;
-  selCliente.innerHTML = '<option value="">Todos</option>' + state.clients.slice().sort(function(a,b){ return a.cliente.localeCompare(b.cliente); })
-    .map(function(c){ return '<option value="'+c.id+'">'+esc(c.cliente)+' — '+esc(c.servicio)+'</option>'; }).join('');
-  selCliente.value = curCliente;
-  var selPeriodo = document.getElementById('fPeriodo'); var curPeriodo = filters.periodo;
+  filterOpts.cliente = state.clients.slice().sort(function(a,b){ return a.cliente.localeCompare(b.cliente); })
+    .map(function(c){ return { label: c.cliente + ' — ' + c.servicio, value: String(c.id) }; });
+  fillDatalist('dlCliente', filterOpts.cliente);
+  setFilterInput('fCliente', 'cliente');
+
   var periodos = state.periods.slice();
-  state.tech.forEach(function(t){ if(t.periodo && periodos.indexOf(t.periodo)===-1) periodos.push(t.periodo); });
-  selPeriodo.innerHTML = '<option value="">Todos</option>' + periodos.sort().reverse().map(function(p){ return '<option value="'+p+'">'+fmtPeriodo(p)+'</option>'; }).join('');
-  selPeriodo.value = curPeriodo;
-  var selEstado = document.getElementById('fEstado'); var curEstado = filters.estado;
-  selEstado.innerHTML = '<option value="">Todos</option>' + Object.keys(STATUS_DEFS).map(function(k){ return '<option value="'+k+'">'+STATUS_DEFS[k].label+'</option>'; }).join('');
-  selEstado.value = curEstado;
+  state.tech.forEach(function(t){ if(t.periodo && periodos.indexOf(t.periodo) === -1) periodos.push(t.periodo); });
+  filterOpts.periodo = periodos.sort().reverse().map(function(p){ return { label: fmtPeriodo(p), value: p }; });
+  fillDatalist('dlPeriodo', filterOpts.periodo);
+  setFilterInput('fPeriodo', 'periodo');
+
+  filterOpts.estado = Object.keys(STATUS_DEFS).map(function(k){ return { label: STATUS_DEFS[k].label, value: k }; });
+  fillDatalist('dlEstado', filterOpts.estado);
+  setFilterInput('fEstado', 'estado');
+}
+function wireFilterInput(inputId, kind){
+  var el = document.getElementById(inputId); if(!el) return;
+  el.addEventListener('input', function(){
+    var v = resolveFilter(kind, el.value);
+    if(v !== null){ filters[kind] = v; renderKPIs(); renderTable(); renderTech(); }
+  });
+  el.addEventListener('change', function(){
+    var v = resolveFilter(kind, el.value);
+    if(v === null){ setFilterInput(inputId, kind); }
+    else { filters[kind] = v; setFilterInput(inputId, kind); renderKPIs(); renderTable(); renderTech(); }
+  });
 }
 
 /* ---------- Render: KPIs ---------- */
@@ -2594,8 +2669,109 @@ function exportConsolidadoMensualXlsx(){
   saveWb(wb, 'consolidado-mensual.xlsx');
 }
 
+/* ---------- Respaldos (adjuntos en la nube) ---------- */
+var ADJ_CATS = { factura:'Factura', oc:'Orden de compra', hes:'HES / ROC', otro:'Otro' };
+var ADJ_MAX = 700 * 1024; /* límite por archivo (bytes) */
+
+function readFileAsDataURL(f){
+  return new Promise(function(res, rej){ var r = new FileReader(); r.onload = function(){ res(r.result); }; r.onerror = rej; r.readAsDataURL(f); });
+}
+function base64ToBlob(b64, mime){
+  var bin = atob(b64); var len = bin.length; var bytes = new Uint8Array(len);
+  for(var i=0;i<len;i++){ bytes[i] = bin.charCodeAt(i); }
+  return new Blob([bytes], { type: mime || 'application/octet-stream' });
+}
+function fmtSize(b){ if(b>=1048576) return (b/1048576).toFixed(1)+' MB'; if(b>=1024) return Math.round(b/1024)+' KB'; return (b||0)+' B'; }
+
+async function subirAdjunto(){
+  if(!cloud.user || !cloud.db){ toast('Debes iniciar sesión para adjuntar respaldos.', 'err'); return; }
+  var fileInput = document.getElementById('adjFile');
+  var f = fileInput.files && fileInput.files[0];
+  if(!f){ toast('Primero selecciona un archivo.', 'err'); return; }
+  if(f.size > ADJ_MAX){ toast('El archivo pesa ' + fmtSize(f.size) + '. El máximo es 700 KB — comprímelo o escanéalo en menor resolución.', 'err'); return; }
+  var cat = document.getElementById('adjCat').value;
+  var ref = document.getElementById('adjRef').value.trim();
+  var cliente = document.getElementById('adjCliente').value.trim();
+  var nota = document.getElementById('adjNota').value.trim();
+  var btn = document.getElementById('btnSubirAdj'); btn.disabled = true; btn.textContent = 'Subiendo…';
+  try{
+    var dataUrl = await readFileAsDataURL(f);
+    var base64 = dataUrl.substring(dataUrl.indexOf(',') + 1);
+    var id = 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+    await cloud.db.collection('adjuntos').doc(id).set({
+      data: base64, name: f.name, mime: f.type || 'application/octet-stream',
+      at: new Date().toISOString(), uploadedBy: cloud.user.email
+    });
+    state.adjuntos.push({ id:id, cat:cat, ref:ref, cliente:cliente, nota:nota, name:f.name, mime:f.type||'', size:f.size, at:new Date().toISOString() });
+    saveLocal();
+    renderRespaldos();
+    fileInput.value = ''; document.getElementById('adjRef').value = ''; document.getElementById('adjCliente').value = ''; document.getElementById('adjNota').value = '';
+    toast('Respaldo adjuntado y guardado en la nube.', 'ok');
+  }catch(e){ console.error(e); toast('No se pudo subir el respaldo. Revisa tu conexión.', 'err'); }
+  finally{ btn.disabled = false; btn.textContent = 'Adjuntar respaldo'; }
+}
+
+async function abrirAdjunto(id, descargar){
+  if(!cloud.user || !cloud.db){ toast('Inicia sesión para abrir el respaldo.', 'err'); return; }
+  var meta = state.adjuntos.filter(function(a){ return a.id === id; })[0] || {};
+  toast('Obteniendo archivo…', 'ok');
+  try{
+    var snap = await cloud.db.collection('adjuntos').doc(id).get();
+    if(!snap.exists){ toast('El archivo ya no está disponible en la nube.', 'err'); return; }
+    var d = snap.data();
+    var blob = base64ToBlob(d.data, d.mime || meta.mime);
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url;
+    if(descargar){ a.download = d.name || meta.name || 'respaldo'; } else { a.target = '_blank'; a.rel = 'noopener'; }
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
+  }catch(e){ console.error(e); toast('No se pudo abrir el archivo.', 'err'); }
+}
+
+async function eliminarAdjunto(id){
+  if(!confirm('¿Eliminar este respaldo? Esta acción no se puede deshacer.')) return;
+  try{ if(cloud.user && cloud.db) await cloud.db.collection('adjuntos').doc(id).delete(); }catch(e){ console.error(e); }
+  state.adjuntos = state.adjuntos.filter(function(a){ return a.id !== id; });
+  saveLocal(); renderRespaldos(); toast('Respaldo eliminado.', 'ok');
+}
+
+function renderRespaldos(){
+  var body = document.getElementById('respaldosBody'); if(!body) return;
+  var catF = (document.getElementById('adjCatFilter') || {}).value || '';
+  var q = ((document.getElementById('adjSearch') || {}).value || '').trim().toLowerCase();
+  var rows = (state.adjuntos || []).slice().sort(function(a,b){ return (b.at||'').localeCompare(a.at||''); });
+  rows = rows.filter(function(a){
+    if(catF && a.cat !== catF) return false;
+    if(q){ var hay = [ADJ_CATS[a.cat]||a.cat, a.ref, a.cliente, a.name, a.nota].join(' ').toLowerCase(); if(hay.indexOf(q) === -1) return false; }
+    return true;
+  });
+  if(!rows.length){
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--slate-soft);padding:22px;">' + ((state.adjuntos||[]).length ? 'No hay respaldos que coincidan con la búsqueda.' : 'Aún no has adjuntado respaldos. Sube el primero arriba.') + '</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(function(a){
+    var fecha = a.at ? new Date(a.at).toLocaleDateString('es-CL') : '';
+    return '<tr>' +
+      '<td><span class="adj-cat-badge">' + esc(ADJ_CATS[a.cat] || a.cat) + '</span></td>' +
+      '<td>' + esc(a.ref || '—') + '</td>' +
+      '<td>' + esc(a.cliente || '—') + '</td>' +
+      '<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(a.name) + '">' + esc(a.name) + '</td>' +
+      '<td style="color:var(--slate);">' + esc(a.nota || '') + '</td>' +
+      '<td>' + fmtSize(a.size) + '</td>' +
+      '<td>' + fecha + '</td>' +
+      '<td style="text-align:right;white-space:nowrap;">' +
+        '<button class="btn btn-ghost btn-sm" data-adjver="' + a.id + '">Ver</button> ' +
+        '<button class="btn btn-ghost btn-sm" data-adjdl="' + a.id + '">Descargar</button> ' +
+        '<button class="btn btn-ghost btn-sm" data-adjdel="' + a.id + '" style="color:#C0392B;">Eliminar</button>' +
+      '</td></tr>';
+  }).join('');
+  Array.prototype.forEach.call(body.querySelectorAll('[data-adjver]'), function(x){ x.addEventListener('click', function(){ abrirAdjunto(x.getAttribute('data-adjver'), false); }); });
+  Array.prototype.forEach.call(body.querySelectorAll('[data-adjdl]'), function(x){ x.addEventListener('click', function(){ abrirAdjunto(x.getAttribute('data-adjdl'), true); }); });
+  Array.prototype.forEach.call(body.querySelectorAll('[data-adjdel]'), function(x){ x.addEventListener('click', function(){ eliminarAdjunto(x.getAttribute('data-adjdel')); }); });
+}
+
 /* ---------- Render general ---------- */
-function renderAll(){ renderFilterOptions(); renderKPIs(); renderTable(); renderMatrix(); renderTech(); renderClientes(); renderEntidades(); renderDashboard(); }
+function renderAll(){ renderFilterOptions(); renderKPIs(); renderTable(); renderMatrix(); renderTech(); renderClientes(); renderEntidades(); renderDashboard(); renderRespaldos(); }
 function switchTab(tab){
   currentTab = tab;
   Array.prototype.forEach.call(document.querySelectorAll('.tab-btn'), function(b){ b.classList.toggle('active', b.getAttribute('data-tab') === tab); });
@@ -2605,9 +2781,9 @@ function switchTab(tab){
 /* ---------- Inicialización ---------- */
 function initEvents(){
   Array.prototype.forEach.call(document.querySelectorAll('.tab-btn'), function(b){ b.addEventListener('click', function(){ switchTab(b.getAttribute('data-tab')); }); });
-  document.getElementById('fCliente').addEventListener('change', function(e){ filters.cliente = e.target.value; renderKPIs(); renderTable(); renderTech(); });
-  document.getElementById('fPeriodo').addEventListener('change', function(e){ filters.periodo = e.target.value; renderKPIs(); renderTable(); renderTech(); });
-  document.getElementById('fEstado').addEventListener('change', function(e){ filters.estado = e.target.value; renderKPIs(); renderTable(); renderTech(); });
+  wireFilterInput('fCliente', 'cliente');
+  wireFilterInput('fPeriodo', 'periodo');
+  wireFilterInput('fEstado', 'estado');
   document.getElementById('fBuscar').addEventListener('input', debounce(function(e){ filters.buscar = e.target.value; renderKPIs(); renderTable(); renderTech(); }, 200));
   document.getElementById('btnClearFilters').addEventListener('click', function(){ filters = {cliente:'', periodo:'', estado:'', buscar:''}; document.getElementById('fBuscar').value = ''; renderFilterOptions(); renderKPIs(); renderTable(); renderTech(); });
   document.getElementById('btnNuevoRegistro').addEventListener('click', openNuevoRegistroModal);
@@ -2631,6 +2807,9 @@ function initEvents(){
   document.getElementById('btnImportTrigger').addEventListener('click', function(){ document.getElementById('fileImport').click(); });
   document.getElementById('fileImport').addEventListener('change', function(e){ if(e.target.files && e.target.files[0]) importBackup(e.target.files[0]); e.target.value = ''; });
   document.getElementById('btnBulkImportTrigger').addEventListener('click', openImportModal);
+  document.getElementById('btnSubirAdj').addEventListener('click', subirAdjunto);
+  document.getElementById('adjCatFilter').addEventListener('change', renderRespaldos);
+  document.getElementById('adjSearch').addEventListener('input', debounce(renderRespaldos, 180));
   document.getElementById('btnTheme').addEventListener('click', toggleTheme);
   Array.prototype.forEach.call(document.querySelectorAll('.overlay'), function(ov){ ov.addEventListener('click', function(e){ if(e.target === ov){ ov.classList.remove('show'); if(ov.id === 'overlayRegistro'){ editingRecordKey = null; renderAll(); } } }); });
   document.addEventListener('keydown', function(e){ if(e.key === 'Escape'){ Array.prototype.forEach.call(document.querySelectorAll('.overlay.show'), function(ov){ ov.classList.remove('show'); }); if(editingRecordKey){ editingRecordKey = null; renderAll(); } } });
@@ -2711,6 +2890,7 @@ function applyCloudPayload(data){
     state.periods   = obj.periods || [];
     state.tech      = obj.tech || [];
     state.entidades = normalizeEntidades(obj.entidades);
+    state.adjuntos  = obj.adjuntos || [];
     sortPeriods();
     try{ localStorage.setItem(LS_KEY, serializeState()); }catch(e){}
     renderAll();
