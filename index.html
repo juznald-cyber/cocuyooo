@@ -63,6 +63,7 @@ body.theme-dark .cp-node{ background:#1B2128; }
 body.theme-dark .b-amber{color:#E0A84E;} body.theme-dark .b-blue{color:#7EA8E0;}
 body.theme-dark .b-green{color:#5FC08C;} body.theme-dark .b-purple{color:#B18AD9;}
 body.theme-dark .b-red{color:#E08585;} body.theme-dark .b-orange{color:#E0955F;}
+body.theme-dark .b-teal{background:#14312E;color:#5FD0C4;}
 body.theme-dark .b-gray{color:#AEB7C2;}
 body.theme-dark .computed{color:#E0A84E;} body.theme-dark .imp-note{color:#7EA8E0;}
 body{transition:background-color .2s ease,color .2s ease;}
@@ -213,6 +214,7 @@ tbody tr:hover{background:#FAF8F1;}
 .b-green{background:var(--green-pale);color:var(--green);}
 .b-red{background:var(--red-pale);color:var(--red);}
 .b-orange{background:var(--orange-pale);color:var(--orange);}
+.b-teal{background:#D6EFEC;color:#1F7A70;}
 
 /* ---------- Modal ---------- */
 .overlay{
@@ -991,7 +993,8 @@ var STATUS_DEFS = {
   facturado:         {label:'Facturado — por cobrar',     css:'b-blue',   color:'var(--blue)'},
   vencido:           {label:'Vencido',                    css:'b-red',    color:'var(--red)'},
   factorizado:       {label:'Factorizado',                css:'b-purple', color:'var(--purple)'},
-  pagado:            {label:'Pagado',                     css:'b-green',  color:'var(--green)'}
+  pagado:            {label:'Pagado',                     css:'b-green',  color:'var(--green)'},
+  cubierta:          {label:'Facturado en otra factura',  css:'b-teal',   color:'#1F9E93'}
 };
 
 var CHECKPOINT_STEPS = [
@@ -1043,6 +1046,7 @@ function blankRecord(clientId, periodo){
     factura2: blankFactura2(),
     factoring:{ factorizado:false, entidad:'', fecha:'', monto:0 },
     pago:{ pagado:false, fecha:'', monto:0 },
+    cubierta:{ activa:false, factura:'', periodo:'' },
     notas:''
   };
 }
@@ -1052,6 +1056,7 @@ function segFactura(rec){ return (rec.factura2 && rec.factura2.activa) ? rec.fac
 function recTotalFacturado(rec){ var t = rec.factura.emitida ? (rec.factura.total||0) : 0; var s=segFactura(rec); if(s) t += (s.total||0); return t; }
 function invoiceLines(rec){
   var lines=[];
+  if(rec.cubierta && rec.cubierta.activa) return lines; // facturado en otra factura: no cuenta montos aquí
   if(rec.factura.emitida || rec.factura.numero || rec.factura.total){
     lines.push({ tipo:'Principal', numero:rec.factura.numero||'', fechaFac:rec.factura.fechaFacturada||'', venc:rec.factura.fechaVencimiento||'',
       neto:rec.factura.neto||0, iva:rec.factura.iva||0, total:rec.factura.total||0, enviadaSII:!!rec.factura.enviadaSII,
@@ -1082,6 +1087,7 @@ function ensureRecord(clientId, periodo){
   var k = recordKey(clientId, periodo);
   if(!state.records[k]) state.records[k] = blankRecord(clientId, periodo);
   if(!state.records[k].factura2) state.records[k].factura2 = blankFactura2();
+  if(!state.records[k].cubierta) state.records[k].cubierta = { activa:false, factura:'', periodo:'' };
   if(state.periods.indexOf(periodo) === -1){ state.periods.push(periodo); sortPeriods(); }
   return state.records[k];
 }
@@ -1094,6 +1100,7 @@ function getClient(id){
 /* ---------- Cálculo de estado / pipeline ---------- */
 function computeStatus(rec, client){
   if(!rec) return 'sin_prefactura';
+  if(rec.cubierta && rec.cubierta.activa) return 'cubierta';
   var pagado = rec.pago && rec.pago.pagado;
   var factorizado = rec.factoring && rec.factoring.factorizado;
   var facturado = rec.factura && rec.factura.emitida;
@@ -1408,7 +1415,16 @@ var COB_ALIAS = {
   hes:['hes','roc','hes roc','n hes','n hes roc','hes o roc'],
   estado:['status','estado','status pago','estatus'],
   entidad:['entidad factoring','entidad','entidad financiera'],
-  glosa:['glosa','notas','detalle','observacion','descripcion']
+  glosa:['glosa','notas','detalle','observacion','descripcion'],
+  // Segunda factura (anticipo / saldo)
+  factura2:['n factura 2','factura 2','n factura2','factura anticipo','n factura anticipo','segunda factura','n segunda factura','factura secundaria'],
+  fecha2:['fecha factura 2','fecha 2','fecha facturacion 2','fecha segunda factura'],
+  neto2:['neto 2','neto2','neto anticipo'],
+  iva2:['iva 2','iva2'],
+  total2:['total 2','monto 2','total anticipo'],
+  tipo2:['tipo factura 2','tipo 2','tipo segunda factura'],
+  estado2:['estado 2','status 2','estado factura 2'],
+  entidad2:['entidad 2','entidad factoring 2']
 };
 var TECH_ALIAS = {
   periodo:['periodo','mes','mes servicio','mes de servicio'],
@@ -1494,6 +1510,29 @@ function processCobranzaRows(rows){
     else if(kind==='factorizado'){ rec.factoring.factorizado=true; if(entidad) rec.factoring.entidad=String(entidad).trim(); if(!rec.factoring.monto) rec.factoring.monto=rec.factura.total; }
     else if(kind==='reclamado'){ rec.respuesta.estado='refacturada'; }
     if(glosa) rec.notas = rec.notas ? (rec.notas+' | '+glosa) : glosa;
+
+    // Segunda factura (anticipo / saldo)
+    var f2num = String(pick(nd, COB_ALIAS.factura2)||'').replace(/\.0+$/,'').trim();
+    var f2neto = parseMoneyLoose(pick(nd, COB_ALIAS.neto2));
+    var f2total = parseMoneyLoose(pick(nd, COB_ALIAS.total2));
+    var f2iva = parseMoneyLoose(pick(nd, COB_ALIAS.iva2));
+    if(f2num || f2neto || f2total){
+      if(!f2iva && f2neto) f2iva = Math.round(f2neto*0.19);
+      if(!f2total && f2neto) f2total = f2neto + f2iva;
+      if(!f2neto && f2total){ f2neto = Math.round(f2total/1.19); f2iva = f2total - f2neto; }
+      var f2fecha = excelDateToISO(pick(nd, COB_ALIAS.fecha2));
+      var f2tipoRaw = String(pick(nd, COB_ALIAS.tipo2)||'Anticipo');
+      var f2kind = classifyEstado(pick(nd, COB_ALIAS.estado2));
+      var f2ent = pick(nd, COB_ALIAS.entidad2) || entidadFrom(pick(nd, COB_ALIAS.estado2));
+      if(!rec.factura2) rec.factura2 = blankFactura2();
+      rec.factura2.activa = true;
+      rec.factura2.tipo = (/saldo/i.test(f2tipoRaw) ? 'Saldo' : (/otra/i.test(f2tipoRaw) ? 'Otra' : 'Anticipo'));
+      rec.factura2.numero = f2num;
+      if(f2fecha){ rec.factura2.fechaFacturada=f2fecha; if(!rec.factura2.fechaVencimiento) rec.factura2.fechaVencimiento=addDaysISO(f2fecha,30); }
+      rec.factura2.neto=f2neto; rec.factura2.iva=f2iva; rec.factura2.total=f2total; rec.factura2.enviadaSII=true;
+      if(f2kind==='pagado'){ rec.factura2.pagado=true; }
+      else if(f2kind==='factorizado'){ rec.factura2.factorizado=true; if(f2ent) rec.factura2.entidad=String(f2ent).trim(); }
+    }
     if(existed) updated++; else created++;
   });
   return {created:created, updated:updated, skipped:skipped};
@@ -1564,8 +1603,9 @@ function downloadTemplate(destino){
     XLSX.utils.book_append_sheet(wb, ws, 'Tecnologia'); name='Plantilla_Tecnologia.xlsx';
   } else {
     ws = XLSX.utils.json_to_sheet([
-      { 'Cliente':'CENCOSUD JUMBO','Servicio':'GUARDIAS','RUT':'81201000-K','Periodo':'2026-03','N° Factura':13962,'Fecha Facturación':'2026-04-30','Neto':283862442,'IVA':53933864,'Total':337796306,'Orden de Compra':4000434460,'HES':'','Estado':'Factorizado','Entidad Factoring':'Finameris','Glosa':'Servicios de guardias marzo 2026' },
-      { 'Cliente':'WALMART LIDER','Servicio':'GUARDIAS','RUT':'76.134.941-4','Periodo':'2026-04','N° Factura':13968,'Fecha Facturación':'2026-04-30','Neto':116935603,'IVA':'','Total':'','Orden de Compra':'','HES':'','Estado':'Pendiente','Entidad Factoring':'','Glosa':'Solo con Neto: IVA (19%) y Total se calculan al importar' }
+      { 'Cliente':'CENCOSUD JUMBO','Servicio':'GUARDIAS','RUT':'81201000-K','Periodo':'2026-03','N° Factura':13962,'Fecha Facturación':'2026-04-30','Neto':283862442,'IVA':53933864,'Total':337796306,'Orden de Compra':4000434460,'HES':'','Estado':'Factorizado','Entidad Factoring':'Finameris','Glosa':'Servicios de guardias marzo 2026','Tipo 2':'','N° Factura 2':'','Neto 2':'','Estado 2':'','Entidad 2':'' },
+      { 'Cliente':'WALMART LIDER','Servicio':'GUARDIAS','RUT':'76.134.941-4','Periodo':'2026-04','N° Factura':13968,'Fecha Facturación':'2026-04-30','Neto':116935603,'IVA':'','Total':'','Orden de Compra':'','HES':'','Estado':'Pendiente','Entidad Factoring':'','Glosa':'Solo con Neto: IVA (19%) y Total se calculan al importar','Tipo 2':'','N° Factura 2':'','Neto 2':'','Estado 2':'','Entidad 2':'' },
+      { 'Cliente':'SODIMAC S.A.','Servicio':'GUARDIAS','RUT':'96.792.430-K','Periodo':'2026-05','N° Factura':14200,'Fecha Facturación':'2026-06-05','Neto':10000000,'IVA':'','Total':'','Orden de Compra':'','HES':'','Estado':'Pagado','Entidad Factoring':'','Glosa':'Ejemplo con 2 facturas: anticipo + saldo','Tipo 2':'Saldo','N° Factura 2':14260,'Neto 2':5000000,'Estado 2':'Pendiente','Entidad 2':'' }
     ]);
     XLSX.utils.book_append_sheet(wb, ws, 'INGRESO'); name='Plantilla_Cobranza.xlsx';
   }
@@ -1591,7 +1631,7 @@ function renderImportModal(){
       '<div class="drop" id="dropZone"><div class="drop-ico">📁</div>' +
         '<div>Arrastra tu archivo <b>.xlsx</b> / <b>.xls</b> aquí, o haz clic para elegirlo</div>' +
         '<input type="file" id="impFile" accept=".xlsx,.xls" style="display:none"></div>' +
-      '<div class="imp-note"><b>💡 Montos automáticos:</b> basta con llenar el <b>Neto</b> — el IVA (19%) y el Total se calculan solos al importar. Si pones el Total sin Neto, también se separan. Reconoce: Cliente, Servicio, RUT, Periodo/Mes, N° Factura, Fecha, Neto, IVA, Total, Orden de Compra, HES, Estado, Entidad, Glosa. Se crea o actualiza por cliente+periodo.</div>' +
+      '<div class="imp-note"><b>💡 Montos automáticos:</b> basta con llenar el <b>Neto</b> — el IVA (19%) y el Total se calculan solos al importar. Reconoce: Cliente, Servicio, RUT, Periodo/Mes, N° Factura, Fecha, Neto, IVA, Total, Orden de Compra, HES, Estado, Entidad, Glosa. <b>Segunda factura (anticipo/saldo):</b> agrega columnas <i>Tipo 2, N° Factura 2, Neto 2, Estado 2, Entidad 2</i>. Se crea o actualiza por cliente+periodo.</div>' +
       '<div class="imp-result" id="impResultBox"></div>' +
     '</div>' +
     '<div class="modal-foot"><button class="btn btn-ghost btn-danger-text" id="btnResetDatos">↺ Restablecer a datos de ejemplo</button><button class="btn btn-primary" id="btnCloseImport2">Listo</button></div>';
@@ -1695,6 +1735,7 @@ function renderTable(){
     var numTxt = rec.factura.numero ? esc(rec.factura.numero) : '—';
     if(seg && seg.numero) numTxt += ' <span style="color:var(--slate-soft);font-size:11px;">+ '+esc(seg.numero)+'</span>';
     else if(seg) numTxt += ' <span style="color:var(--slate-soft);font-size:11px;">(2ª factura)</span>';
+    if(rec.cubierta && rec.cubierta.activa){ numTxt = '<span style="color:#1F9E93;font-size:12px;">↪ '+(rec.cubierta.factura?('fact. '+esc(rec.cubierta.factura)):'en otra factura')+(rec.cubierta.periodo?(' · '+fmtPeriodo(rec.cubierta.periodo)):'')+'</span>'; }
     var totFac = recTotalFacturado(rec);
     return '<tr data-key="'+recordKey(client.id, rec.periodo)+'">' +
       '<td class="cliente-cell"><strong>'+esc(client.cliente)+'</strong><span>'+esc(client.servicio)+' · '+esc(client.rut)+'</span></td>' +
@@ -1713,8 +1754,8 @@ function renderTable(){
 }
 
 /* ---------- Render: matriz resumen ---------- */
-var STATUS_DOT_COLOR = { sin_prefactura:'var(--gray)', prefactura_enviada:'var(--slate-soft)', esperando_oc:'var(--amber)', esperando_hes:'var(--amber-deep)', listo_facturar:'var(--orange)', facturado:'var(--blue)', vencido:'var(--red)', factorizado:'var(--purple)', pagado:'var(--green)' };
-var STATUS_SHORT = { sin_prefactura:'—', prefactura_enviada:'PF', esperando_oc:'OC', esperando_hes:'HES', listo_facturar:'LST', facturado:'FAC', vencido:'VNC', factorizado:'FZD', pagado:'PAG' };
+var STATUS_DOT_COLOR = { sin_prefactura:'var(--gray)', prefactura_enviada:'var(--slate-soft)', esperando_oc:'var(--amber)', esperando_hes:'var(--amber-deep)', listo_facturar:'var(--orange)', facturado:'var(--blue)', vencido:'var(--red)', factorizado:'var(--purple)', pagado:'var(--green)', cubierta:'#1F9E93' };
+var STATUS_SHORT = { sin_prefactura:'—', prefactura_enviada:'PF', esperando_oc:'OC', esperando_hes:'HES', listo_facturar:'LST', facturado:'FAC', vencido:'VNC', factorizado:'FZD', pagado:'PAG', cubierta:'REF' };
 function renderMatrix(){
   var clientsSorted = state.clients.filter(function(c){return c.activo!==false;}).slice().sort(function(a,b){ return a.cliente.localeCompare(b.cliente) || a.servicio.localeCompare(b.servicio); });
   var periods = state.periods.slice().sort();
@@ -1797,6 +1838,14 @@ function renderRecordModal(){
         '<div class="computed" style="margin-top:10px;"><span>IVA (19%): '+fmtMoney(rec.factura.iva)+'</span><span>Total: '+fmtMoney(rec.factura.total)+'</span></div>' +
         '<label class="check-row" style="margin-top:6px;"><input type="checkbox" data-field="factura.enviadaSII" '+(rec.factura.enviadaSII?'checked':'')+'><span class="ctext">Enviada al Servicio de Impuestos Internos</span></label>' +
         '<div class="field-grid"><div class="field"><label>Fecha de envío al SII</label><input type="date" data-field="factura.fechaEnvioSII" value="'+rec.factura.fechaEnvioSII+'"></div></div>' +
+      '</div></div>' +
+      '<div class="section"><div class="section-head"><h4>Facturado en otra factura (servicio de varios meses)</h4></div><div class="section-body">' +
+        '<label class="check-row"><input type="checkbox" data-field="cubierta.activa" '+(rec.cubierta.activa?'checked':'')+'><span class="ctext">El servicio de este mes se facturó junto con otro mes</span><span class="csub"> — una sola factura cubre 2 meses</span></label>' +
+        '<div class="field-grid">' +
+          '<div class="field"><label>N° de factura donde quedó</label><input type="text" data-field="cubierta.factura" value="'+esc(rec.cubierta.factura)+'"></div>' +
+          '<div class="field"><label>Mes en que se registró</label><input type="month" data-field="cubierta.periodo" value="'+esc(rec.cubierta.periodo)+'"></div>' +
+        '</div>' +
+        '<p class="hint">Al activarlo, este mes queda como “Facturado en otra factura” y no suma monto (para no duplicar); el monto queda en el mes indicado.</p>' +
       '</div></div>' +
       '<div class="section"><div class="section-head"><h4><span class="section-num">5</span>Factoring / Cobranza</h4></div><div class="section-body"><div class="two-col">' +
         '<div><label class="check-row"><input type="checkbox" data-field="factoring.factorizado" '+(rec.factoring.factorizado?'checked':'')+'><span class="ctext">Factura factorizada</span><span class="csub"> — se vendió a una entidad financiera</span></label>' +
