@@ -429,6 +429,12 @@ body.theme-dark .dias-chip.venc{color:#E08585;}
 .login-foot{ color:var(--slate-soft); font-size:11px; margin:20px 0 0; }
 .user-pill{ display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--slate); background:var(--paper); border:1px solid var(--line); border-radius:999px; padding:6px 13px; }
 .user-pill::before{ content:''; width:7px; height:7px; border-radius:50%; background:var(--green); }
+.pw-wrap{ position:relative; }
+.pw-wrap input{ width:100%; padding-right:58px; box-sizing:border-box; }
+.pw-toggle{ position:absolute; top:50%; right:7px; transform:translateY(-50%); background:none; border:none; cursor:pointer; font-size:12px; font-weight:600; color:var(--amber-deep); padding:5px 7px; line-height:1; border-radius:6px; }
+.pw-toggle:hover{ background:var(--amber-pale); }
+.login-link{ display:block; width:100%; background:none; border:none; color:var(--slate); font-size:12.5px; margin-top:14px; cursor:pointer; text-decoration:underline; padding:4px; }
+.login-link:hover{ color:var(--amber-deep); }
 </style>
 </head>
 <body>
@@ -444,9 +450,13 @@ body.theme-dark .dias-chip.venc{color:#E08585;}
       <label for="loginEmail">Correo</label>
       <input type="email" id="loginEmail" autocomplete="username" required placeholder="tu@correo.com">
       <label for="loginPass">Contraseña</label>
-      <input type="password" id="loginPass" autocomplete="current-password" required placeholder="••••••••">
+      <div class="pw-wrap">
+        <input type="password" id="loginPass" autocomplete="current-password" required placeholder="••••••••">
+        <button type="button" class="pw-toggle" id="loginPwToggle" title="Mostrar u ocultar la contraseña">Ver</button>
+      </div>
       <div class="login-error" id="loginError"></div>
       <button type="submit" class="btn btn-amber" id="loginBtn">Ingresar</button>
+      <button type="button" class="login-link" id="loginForgot">¿Olvidaste tu contraseña?</button>
     </form>
     <p class="login-foot">Acceso privado · datos guardados en la nube</p>
   </div>
@@ -466,6 +476,7 @@ body.theme-dark .dias-chip.venc{color:#E08585;}
     </div>
     <div class="topbar-actions">
       <span class="user-pill" id="userPill" style="display:none;"></span>
+      <button class="btn" id="btnUsuarios" style="display:none;" title="Crear nuevos usuarios de acceso">Usuarios</button>
       <button class="btn" id="btnLogout" style="display:none;" title="Cerrar sesión">Cerrar sesión</button>
       <button class="btn" id="btnTheme" title="Cambiar entre tema claro y oscuro">🌙 Oscuro</button>
       <span class="conn-pill off" id="connPill"><span class="conn-dot"></span><span id="connText">Sin archivo conectado</span></span>
@@ -650,6 +661,11 @@ body.theme-dark .dias-chip.venc{color:#E08585;}
 <!-- Modal: editar entidad financiera -->
 <div class="overlay" id="overlayEntidad">
   <div class="modal modal-sm" id="modalEntidad"></div>
+</div>
+
+<!-- Modal: usuarios de acceso -->
+<div class="overlay" id="overlayUsuarios">
+  <div class="modal modal-sm" id="modalUsuarios"></div>
 </div>
 
 
@@ -2638,12 +2654,15 @@ function onAuthChanged(user){
     var pill = document.getElementById('userPill');
     pill.textContent = user.email; pill.style.display = '';
     document.getElementById('btnLogout').style.display = '';
+    document.getElementById('btnUsuarios').style.display = '';
     hideLogin();
     startCloud();
   } else {
     stopCloud();
     document.getElementById('userPill').style.display = 'none';
     document.getElementById('btnLogout').style.display = 'none';
+    document.getElementById('btnUsuarios').style.display = 'none';
+    closeUsuariosModal();
     setConnPill(false);
     showLogin();
   }
@@ -2723,7 +2742,68 @@ function authErrorMsg(ex){
   if(c === 'auth/too-many-requests') return 'Demasiados intentos. Espera un momento e inténtalo de nuevo.';
   if(c === 'auth/network-request-failed') return 'Sin conexión a internet.';
   if(c === 'auth/operation-not-allowed') return 'El acceso por correo/contraseña no está habilitado en Firebase.';
-  return 'No se pudo iniciar sesión. Inténtalo de nuevo.';
+  if(c === 'auth/email-already-in-use') return 'Ese correo ya está registrado como usuario.';
+  if(c === 'auth/weak-password' || c === 'auth/password-does-not-meet-requirements') return 'La contraseña debe tener al menos 6 caracteres.';
+  if(c === 'auth/missing-password') return 'Ingresa una contraseña.';
+  if(c === 'auth/missing-email') return 'Ingresa el correo.';
+  return 'No se pudo completar la acción. Inténtalo de nuevo.';
+}
+
+/* Mostrar / ocultar contraseña */
+function togglePw(inputId, btn){
+  var el = document.getElementById(inputId); if(!el) return;
+  if(el.type === 'password'){ el.type = 'text'; if(btn) btn.textContent = 'Ocultar'; }
+  else { el.type = 'password'; if(btn) btn.textContent = 'Ver'; }
+}
+
+/* Crear un nuevo usuario sin cerrar la sesión actual (usa una app secundaria de Firebase) */
+async function crearUsuario(email, pass){
+  if(typeof firebase === 'undefined') return { ok:false, msg:'Sin conexión con la nube.' };
+  var secondary = null;
+  try{
+    for(var i=0; i<firebase.apps.length; i++){ if(firebase.apps[i].name === 'secondary'){ secondary = firebase.apps[i]; break; } }
+    if(!secondary) secondary = firebase.initializeApp(firebaseConfig, 'secondary');
+    await secondary.auth().createUserWithEmailAndPassword(email, pass);
+    await secondary.auth().signOut();
+    return { ok:true };
+  }catch(ex){ return { ok:false, msg: authErrorMsg(ex) }; }
+}
+
+/* ---------- Modal: usuarios de acceso ---------- */
+function openUsuariosModal(){ renderUsuariosModal(); document.getElementById('overlayUsuarios').classList.add('show'); }
+function closeUsuariosModal(){ document.getElementById('overlayUsuarios').classList.remove('show'); }
+function renderUsuariosModal(){
+  var modal = document.getElementById('modalUsuarios');
+  modal.innerHTML =
+    '<div class="modal-head"><div><h2>Usuarios de acceso</h2><p>Crea nuevos usuarios que podrán iniciar sesión con su correo y clave. Todos ven la misma información.</p></div><button class="modal-close" id="btnCloseUsers">&times;</button></div>' +
+    '<div class="modal-body"><div class="field-grid">' +
+      '<div class="field"><label>Correo del nuevo usuario</label><input type="email" id="nu_email" placeholder="persona@correo.com" autocomplete="off"></div>' +
+      '<div class="field"><label>Contraseña (mínimo 6 caracteres)</label><div class="pw-wrap"><input type="password" id="nu_pass" placeholder="••••••••" autocomplete="new-password"><button type="button" class="pw-toggle" id="nu_toggle" title="Mostrar u ocultar la contraseña">Ver</button></div></div>' +
+    '</div>' +
+    '<div class="login-error" id="nu_msg" style="text-align:left;"></div>' +
+    '<p style="font-size:12px;color:var(--slate);margin:8px 0 0;line-height:1.4;">Para <b>ver la lista completa</b> o <b>eliminar</b> usuarios, entra a Firebase → Authentication → Users.</p>' +
+    '</div>' +
+    '<div class="modal-foot"><span></span><div style="display:flex;gap:8px;"><button class="btn" id="btnCancelUsers">Cerrar</button><button class="btn btn-primary" id="btnCrearUser">Crear usuario</button></div></div>';
+  document.getElementById('btnCloseUsers').onclick = closeUsuariosModal;
+  document.getElementById('btnCancelUsers').onclick = closeUsuariosModal;
+  document.getElementById('nu_toggle').onclick = function(){ togglePw('nu_pass', this); };
+  document.getElementById('btnCrearUser').onclick = async function(){
+    var email = (document.getElementById('nu_email').value || '').trim();
+    var pass  = document.getElementById('nu_pass').value || '';
+    var msg = document.getElementById('nu_msg'); msg.textContent = ''; msg.style.color = '';
+    if(!email){ msg.textContent = 'Ingresa el correo.'; return; }
+    if(pass.length < 6){ msg.textContent = 'La contraseña debe tener al menos 6 caracteres.'; return; }
+    var btn = this; btn.disabled = true; btn.textContent = 'Creando…';
+    var r = await crearUsuario(email, pass);
+    btn.disabled = false; btn.textContent = 'Crear usuario';
+    if(r.ok){
+      msg.style.color = 'var(--green)';
+      msg.textContent = 'Usuario creado: ' + email;
+      document.getElementById('nu_email').value = '';
+      document.getElementById('nu_pass').value = '';
+      toast('Usuario creado correctamente.', 'ok');
+    } else { msg.textContent = r.msg; }
+  };
 }
 
 function initAuthEvents(){
@@ -2733,17 +2813,38 @@ function initAuthEvents(){
       e.preventDefault();
       var email = document.getElementById('loginEmail').value.trim();
       var pass  = document.getElementById('loginPass').value;
-      var errEl = document.getElementById('loginError'); errEl.textContent = '';
+      var errEl = document.getElementById('loginError'); errEl.textContent = ''; errEl.style.color = '';
       var btn = document.getElementById('loginBtn'); btn.disabled = true; btn.textContent = 'Ingresando…';
       try{
         if(!cloud.auth) throw { code:'auth/network-request-failed' };
         await cloud.auth.signInWithEmailAndPassword(email, pass);
-      }catch(ex){ errEl.textContent = authErrorMsg(ex); }
+      }catch(ex){ errEl.style.color = ''; errEl.textContent = authErrorMsg(ex); }
       finally{ btn.disabled = false; btn.textContent = 'Ingresar'; }
     });
   }
+  var pwt = document.getElementById('loginPwToggle');
+  if(pwt){ pwt.addEventListener('click', function(){ togglePw('loginPass', this); }); }
+
+  var forgot = document.getElementById('loginForgot');
+  if(forgot){
+    forgot.addEventListener('click', async function(){
+      var email = (document.getElementById('loginEmail').value || '').trim();
+      var errEl = document.getElementById('loginError'); errEl.style.color = '';
+      if(!email){ errEl.textContent = 'Escribe tu correo arriba y vuelve a tocar “¿Olvidaste tu contraseña?”.'; return; }
+      if(!cloud.auth){ errEl.textContent = 'Sin conexión a internet.'; return; }
+      try{
+        await cloud.auth.sendPasswordResetEmail(email);
+        errEl.style.color = 'var(--green)';
+        errEl.textContent = 'Te enviamos un correo para restablecer la contraseña. Revisa tu bandeja de entrada (y la carpeta de spam).';
+      }catch(ex){ errEl.style.color = ''; errEl.textContent = authErrorMsg(ex); }
+    });
+  }
+
   var out = document.getElementById('btnLogout');
   if(out){ out.addEventListener('click', function(){ if(confirm('¿Cerrar sesión?')){ if(cloud.auth) cloud.auth.signOut(); } }); }
+
+  var bu = document.getElementById('btnUsuarios');
+  if(bu){ bu.addEventListener('click', openUsuariosModal); }
 }
 
 /* ---------- Inicialización ---------- */
