@@ -456,6 +456,7 @@ body.theme-dark .dias-chip.venc{color:#E08585;}
   <div class="tab-panel active" id="tab-dashboard">
     <div class="dash-section" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
       <strong style="font-size:13px;margin-right:6px;">⬇ Descargar informes (Excel):</strong>
+      <button class="btn btn-sm" id="btnRepMensual">Resumen mensual por cliente</button>
       <button class="btn btn-sm" id="btnRepFactorizado">Todo lo factorizado</button>
       <button class="btn btn-sm" id="btnRepDetalle">Detalle de facturación</button>
       <button class="btn btn-sm" id="btnRepPorCobrar">Cuentas por cobrar</button>
@@ -1029,6 +1030,7 @@ var editingTechId = null;
 
 function recordKey(clientId, periodo){ return clientId + '__' + periodo; }
 
+function blankFactura2(){ return { activa:false, tipo:'Anticipo', numero:'', fechaFacturada:'', fechaVencimiento:'', neto:0, iva:0, total:0, enviadaSII:false, factorizado:false, entidad:'', factoringFecha:'', pagado:false, pagoFecha:'' }; }
 function blankRecord(clientId, periodo){
   return {
     clientId: clientId,
@@ -1038,16 +1040,48 @@ function blankRecord(clientId, periodo){
     oc:{ solicitada:false, recibida:false, numero:'', fecha:'' },
     hes:{ solicitado:false, recibido:false, numero:'', fecha:'' },
     factura:{ emitida:false, numero:'', fechaFacturada:'', fechaVencimiento:'', neto:0, iva:0, total:0, enviadaSII:false, fechaEnvioSII:'' },
+    factura2: blankFactura2(),
     factoring:{ factorizado:false, entidad:'', fecha:'', monto:0 },
     pago:{ pagado:false, fecha:'', monto:0 },
     notas:''
   };
 }
 
+/* ---- Líneas de factura: cada registro puede tener 1 o 2 facturas (anticipo + saldo) ---- */
+function segFactura(rec){ return (rec.factura2 && rec.factura2.activa) ? rec.factura2 : null; }
+function recTotalFacturado(rec){ var t = rec.factura.emitida ? (rec.factura.total||0) : 0; var s=segFactura(rec); if(s) t += (s.total||0); return t; }
+function invoiceLines(rec){
+  var lines=[];
+  if(rec.factura.emitida || rec.factura.numero || rec.factura.total){
+    lines.push({ tipo:'Principal', numero:rec.factura.numero||'', fechaFac:rec.factura.fechaFacturada||'', venc:rec.factura.fechaVencimiento||'',
+      neto:rec.factura.neto||0, iva:rec.factura.iva||0, total:rec.factura.total||0, enviadaSII:!!rec.factura.enviadaSII,
+      factorizado:!!rec.factoring.factorizado, entidad:rec.factoring.entidad||'', factFecha:rec.factoring.fecha||'',
+      pagado:!!rec.pago.pagado, pagoFecha:rec.pago.fecha||'', emitida:!!rec.factura.emitida });
+  }
+  var s=segFactura(rec);
+  if(s){
+    lines.push({ tipo:(s.tipo||'Segunda'), numero:s.numero||'', fechaFac:s.fechaFacturada||'', venc:s.fechaVencimiento||'',
+      neto:s.neto||0, iva:s.iva||0, total:s.total||0, enviadaSII:!!s.enviadaSII,
+      factorizado:!!s.factorizado, entidad:s.entidad||'', factFecha:s.factoringFecha||'',
+      pagado:!!s.pagado, pagoFecha:s.pagoFecha||'', emitida:true });
+  }
+  return lines;
+}
+function lineBucket(l){ if(l.pagado) return 'pagado'; if(l.factorizado) return 'factorizado'; if(l.emitida){ if(l.venc && l.venc < todayISO()) return 'vencido'; return 'facturado'; } return 'otro'; }
+function allLines(filterFn){
+  var out=[];
+  Object.keys(state.records).forEach(function(k){ var r=state.records[k]; var c=getClient(r.clientId); if(!c) return;
+    invoiceLines(r).forEach(function(l){ if(filterFn && !filterFn(l,r,c)) return; out.push({l:l, r:r, c:c}); });
+  });
+  out.sort(function(a,b){ return (a.r.periodo||'').localeCompare(b.r.periodo||'') || a.c.cliente.localeCompare(b.c.cliente); });
+  return out;
+}
+
 function getRecord(clientId, periodo){ return state.records[recordKey(clientId, periodo)] || null; }
 function ensureRecord(clientId, periodo){
   var k = recordKey(clientId, periodo);
   if(!state.records[k]) state.records[k] = blankRecord(clientId, periodo);
+  if(!state.records[k].factura2) state.records[k].factura2 = blankFactura2();
   if(state.periods.indexOf(periodo) === -1){ state.periods.push(periodo); sortPeriods(); }
   return state.records[k];
 }
@@ -1626,20 +1660,23 @@ function renderFilterOptions(){
 /* ---------- Render: KPIs ---------- */
 function renderKPIs(){
   var list = allRecordsList().filter(passesFilters);
-  var facturadoTot=0, pagadoTot=0, pendienteTot=0, factorizadoTot=0, vencidos=0;
+  var facturadoTot=0, pagadoTot=0, pendienteTot=0, factorizadoTot=0;
+  var facCount=0, pagCount=0, pendCount=0, factzCount=0, vencidos=0;
   list.forEach(function(item){
-    var rec = item.rec; var total = rec.factura.total || 0;
-    if(rec.factura.emitida) facturadoTot += total;
-    if(item.status === 'pagado') pagadoTot += (rec.pago.monto || total);
-    else if(item.status === 'factorizado') factorizadoTot += (rec.factoring.monto || total);
-    else if(rec.factura.emitida) pendienteTot += total;
-    if(item.status === 'vencido') vencidos++;
+    invoiceLines(item.rec).forEach(function(l){
+      if(l.emitida){ facturadoTot += l.total; facCount++; }
+      var b = lineBucket(l);
+      if(b==='pagado'){ pagadoTot += l.total; pagCount++; }
+      else if(b==='factorizado'){ factorizadoTot += l.total; factzCount++; }
+      else if(b==='facturado' || b==='vencido'){ pendienteTot += l.total; pendCount++; }
+      if(b==='vencido') vencidos++;
+    });
   });
   var kpis = [
-    {cls:'k-facturado', lbl:'Total facturado', val:fmtMoney(facturadoTot), sub:list.filter(function(i){return i.rec.factura.emitida;}).length + ' facturas'},
-    {cls:'k-pagado', lbl:'Pagado', val:fmtMoney(pagadoTot), sub:list.filter(function(i){return i.status==='pagado';}).length + ' registros'},
-    {cls:'k-pendiente', lbl:'Pendiente por cobrar', val:fmtMoney(pendienteTot), sub:list.filter(function(i){return i.status==='facturado'||i.status==='vencido';}).length + ' registros'},
-    {cls:'k-factorizado', lbl:'Factorizado', val:fmtMoney(factorizadoTot), sub:list.filter(function(i){return i.status==='factorizado';}).length + ' registros'},
+    {cls:'k-facturado', lbl:'Total facturado', val:fmtMoney(facturadoTot), sub:facCount + ' facturas'},
+    {cls:'k-pagado', lbl:'Pagado', val:fmtMoney(pagadoTot), sub:pagCount + ' facturas'},
+    {cls:'k-pendiente', lbl:'Pendiente por cobrar', val:fmtMoney(pendienteTot), sub:pendCount + ' facturas'},
+    {cls:'k-factorizado', lbl:'Factorizado', val:fmtMoney(factorizadoTot), sub:factzCount + ' facturas'},
     {cls:'k-vencido', lbl:'Vencidos', val:vencidos, sub:'facturas fuera de plazo'}
   ];
   document.getElementById('kpiRow').innerHTML = kpis.map(function(k){ return '<div class="kpi '+k.cls+'"><div class="lbl">'+k.lbl+'</div><div class="val">'+k.val+'</div><div class="sub">'+k.sub+'</div></div>'; }).join('');
@@ -1654,12 +1691,17 @@ function renderTable(){
   body.innerHTML = list.map(function(item){
     var rec=item.rec, client=item.client, st=STATUS_DEFS[item.status];
     var factoringTxt = rec.factoring.factorizado ? (esc(rec.factoring.entidad) || 'Sí') : '—';
+    var seg = segFactura(rec);
+    var numTxt = rec.factura.numero ? esc(rec.factura.numero) : '—';
+    if(seg && seg.numero) numTxt += ' <span style="color:var(--slate-soft);font-size:11px;">+ '+esc(seg.numero)+'</span>';
+    else if(seg) numTxt += ' <span style="color:var(--slate-soft);font-size:11px;">(2ª factura)</span>';
+    var totFac = recTotalFacturado(rec);
     return '<tr data-key="'+recordKey(client.id, rec.periodo)+'">' +
       '<td class="cliente-cell"><strong>'+esc(client.cliente)+'</strong><span>'+esc(client.servicio)+' · '+esc(client.rut)+'</span></td>' +
       '<td>'+fmtPeriodo(rec.periodo)+'</td>' +
-      '<td class="mono">'+(rec.factura.numero ? esc(rec.factura.numero) : '—')+'</td>' +
+      '<td class="mono">'+numTxt+'</td>' +
       '<td class="mono">'+fmtDate(rec.factura.fechaVencimiento)+'</td>' +
-      '<td class="mono">'+(rec.factura.total ? fmtMoney(rec.factura.total) : '—')+'</td>' +
+      '<td class="mono">'+(totFac ? fmtMoney(totFac) : '—')+'</td>' +
       '<td><span class="badge '+st.css+'">'+st.label+'</span></td>' +
       '<td>'+factoringTxt+'</td>' +
       '<td><button class="btn btn-ghost btn-sm">Abrir →</button></td>' +
@@ -1685,8 +1727,9 @@ function renderMatrix(){
       var rec = getRecord(client.id, p);
       if(!rec){ return '<td class="matrix-cell" data-client="'+client.id+'" data-periodo="'+p+'"><span class="matrix-empty-cell">·</span></td>'; }
       var st = computeStatus(rec, client); var color = STATUS_DOT_COLOR[st];
-      var amount = rec.factura.total ? fmtMoney(rec.factura.total) : '';
-      if(rec.factura.emitida) totalsByPeriod[p].facturado += rec.factura.total;
+      var totFac = recTotalFacturado(rec);
+      var amount = totFac ? fmtMoney(totFac) : '';
+      totalsByPeriod[p].facturado += totFac;
       return '<td class="matrix-cell" data-client="'+client.id+'" data-periodo="'+p+'" title="'+STATUS_DEFS[st].label+'"><div class="mc-dot" style="background:'+color+';">'+STATUS_SHORT[st]+'</div>'+(amount ? '<div class="mc-amount">'+amount+'</div>' : '')+'</td>';
     }).join('');
     return '<tr><td class="sticky-col row-label"><strong>'+esc(client.cliente)+'</strong><span>'+esc(client.servicio)+'</span></td>'+cells+'</tr>';
@@ -1764,6 +1807,25 @@ function renderRecordModal(){
           '<div class="field-grid"><div class="field"><label>Fecha de pago</label><input type="date" data-field="pago.fecha" value="'+rec.pago.fecha+'"></div>' +
             '<div class="field"><label>Monto pagado</label><input type="number" step="1" data-field="pago.monto" value="'+rec.pago.monto+'"></div></div></div>' +
       '</div></div></div>' +
+      '<div class="section"><div class="section-head"><h4><span class="section-num">6</span>Segunda factura (anticipo / saldo)</h4></div><div class="section-body">' +
+        '<label class="check-row"><input type="checkbox" data-field="factura2.activa" '+(rec.factura2.activa?'checked':'')+'><span class="ctext">Agregar una segunda factura</span><span class="csub"> — por ejemplo un anticipo y luego el saldo</span></label>' +
+        '<div class="field-grid">' +
+          '<div class="field"><label>Tipo</label><select data-field="factura2.tipo"><option '+(rec.factura2.tipo==='Anticipo'?'selected':'')+'>Anticipo</option><option '+(rec.factura2.tipo==='Saldo'?'selected':'')+'>Saldo</option><option '+(rec.factura2.tipo==='Otra'?'selected':'')+'>Otra</option></select></div>' +
+          '<div class="field"><label>N° de factura</label><input type="text" data-field="factura2.numero" value="'+esc(rec.factura2.numero)+'"></div>' +
+          '<div class="field"><label>Fecha facturada</label><input type="date" data-field="factura2.fechaFacturada" value="'+rec.factura2.fechaFacturada+'"></div>' +
+          '<div class="field"><label>Vencimiento (30 días)</label><input type="date" data-field="factura2.fechaVencimiento" value="'+rec.factura2.fechaVencimiento+'"></div>' +
+          '<div class="field"><label>Monto neto</label><input type="number" step="1" data-field="factura2.neto" value="'+rec.factura2.neto+'"></div>' +
+        '</div>' +
+        '<div class="computed computed2" style="margin-top:10px;"><span>IVA (19%): '+fmtMoney(rec.factura2.iva)+'</span><span>Total: '+fmtMoney(rec.factura2.total)+'</span></div>' +
+        '<label class="check-row" style="margin-top:6px;"><input type="checkbox" data-field="factura2.enviadaSII" '+(rec.factura2.enviadaSII?'checked':'')+'><span class="ctext">Enviada al SII</span></label>' +
+        '<div class="two-col">' +
+          '<div><label class="check-row"><input type="checkbox" data-field="factura2.factorizado" '+(rec.factura2.factorizado?'checked':'')+'><span class="ctext">Factorizada</span></label>' +
+            '<div class="field-grid"><div class="field"><label>Entidad financiera</label><input type="text" list="entidadesDatalist" data-field="factura2.entidad" value="'+esc(rec.factura2.entidad)+'" autocomplete="off" placeholder="Escribe o elige…"></div>' +
+              '<div class="field"><label>Fecha factoring</label><input type="date" data-field="factura2.factoringFecha" value="'+rec.factura2.factoringFecha+'"></div></div></div>' +
+          '<div><label class="check-row"><input type="checkbox" data-field="factura2.pagado" '+(rec.factura2.pagado?'checked':'')+'><span class="ctext">Pagada</span></label>' +
+            '<div class="field-grid"><div class="field"><label>Fecha de pago</label><input type="date" data-field="factura2.pagoFecha" value="'+rec.factura2.pagoFecha+'"></div></div></div>' +
+        '</div>' +
+      '</div></div>' +
       '<div class="section"><div class="section-head"><h4>Notas / Glosa</h4></div><div class="section-body"><textarea data-field="notas">'+esc(rec.notas)+'</textarea></div></div>' +
     '</div>' +
     '<div class="modal-foot"><button class="btn btn-ghost btn-danger-text" id="btnDeleteRecord">Eliminar registro</button>' +
@@ -1797,6 +1859,10 @@ function wireRecordModalEvents(){
       if(field === 'factoring.factorizado' && val && !rec.factoring.monto){ rec.factoring.monto = rec.factura.total; touched.push('factoring.monto'); }
       if(field === 'pago.pagado' && val && !rec.pago.fecha){ rec.pago.fecha = todayISO(); touched.push('pago.fecha'); }
       if(field === 'pago.pagado' && val && !rec.pago.monto){ rec.pago.monto = rec.factura.total; touched.push('pago.monto'); }
+      if(field === 'factura2.neto'){ rec.factura2.iva = Math.round(rec.factura2.neto*0.19); rec.factura2.total = rec.factura2.neto + rec.factura2.iva; }
+      if(field === 'factura2.fechaFacturada' && rec.factura2.fechaFacturada && !rec.factura2.fechaVencimiento){ rec.factura2.fechaVencimiento = addDaysISO(rec.factura2.fechaFacturada,30); touched.push('factura2.fechaVencimiento'); }
+      if(field === 'factura2.factorizado' && val && !rec.factura2.factoringFecha){ rec.factura2.factoringFecha = todayISO(); touched.push('factura2.factoringFecha'); }
+      if(field === 'factura2.pagado' && val && !rec.factura2.pagoFecha){ rec.factura2.pagoFecha = todayISO(); touched.push('factura2.pagoFecha'); }
       syncModalDynamic(touched);
       if(evt === 'input') persistDebounced(); else persist();
     });
@@ -1807,6 +1873,7 @@ function syncModalDynamic(touchedFields){
   var client = getClient(rec.clientId); var cp = checkpointState(rec, client);
   var checkpointEl = document.querySelector('#modalRegistro .checkpoint'); if(checkpointEl) checkpointEl.outerHTML = buildCheckpointHtml(cp);
   var computedEl = document.querySelector('#modalRegistro .computed'); if(computedEl) computedEl.innerHTML = '<span>IVA (19%): '+fmtMoney(rec.factura.iva)+'</span><span>Total: '+fmtMoney(rec.factura.total)+'</span>';
+  var computed2El = document.querySelector('#modalRegistro .computed2'); if(computed2El && rec.factura2) computed2El.innerHTML = '<span>IVA (19%): '+fmtMoney(rec.factura2.iva)+'</span><span>Total: '+fmtMoney(rec.factura2.total)+'</span>';
   var badgeEl = document.querySelector('#modalRegistro .modal-foot .badge'); if(badgeEl){ badgeEl.className = 'badge ' + STATUS_DEFS[cp.status].css; badgeEl.textContent = STATUS_DEFS[cp.status].label; }
   (touchedFields || []).forEach(function(f){ var el = document.querySelector('#modalRegistro [data-field="'+f+'"]'); if(el && document.activeElement !== el) el.value = getPath(rec, f); });
 }
@@ -1880,27 +1947,22 @@ function dashAmt(r){ return Number(r.factura.total)||0; }
 function daysUntil(iso){ if(!iso) return null; var d=new Date(iso+'T00:00:00'); var t=new Date(todayISO()+'T00:00:00'); return Math.round((d-t)/86400000); }
 
 function availableForFactoringList(){
-  var out=[];
-  Object.keys(state.records).forEach(function(k){
-    var r=state.records[k]; var c=getClient(r.clientId); if(!c) return;
-    if(r.factura.emitida && r.factura.enviadaSII && !r.factoring.factorizado && !r.pago.pagado) out.push({rec:r, client:c});
-  });
-  out.sort(function(a,b){ return (a.rec.factura.fechaVencimiento||'').localeCompare(b.rec.factura.fechaVencimiento||''); });
-  return out;
+  return allLines(function(l){ return l.emitida && l.enviadaSII && !l.factorizado && !l.pagado; })
+    .sort(function(a,b){ return (a.l.venc||'').localeCompare(b.l.venc||''); });
 }
 function factoringByEntityMap(){
   var map={};
-  Object.keys(state.records).forEach(function(k){ var r=state.records[k]; if(r.factoring.factorizado){ var e=r.factoring.entidad||'Sin especificar'; if(!map[e]) map[e]={count:0,monto:0}; map[e].count++; map[e].monto+=(r.factoring.monto||r.factura.total); } });
+  allLines(function(l){ return l.factorizado; }).forEach(function(x){ var e=x.l.entidad||'Sin especificar'; if(!map[e]) map[e]={count:0,monto:0}; map[e].count++; map[e].monto+=x.l.total; });
   return map;
 }
 function facturadoByMonthMap(){
   var map={}; state.periods.slice().sort().forEach(function(p){ map[p]={total:0,count:0}; });
-  Object.keys(state.records).forEach(function(k){ var r=state.records[k]; if(r.factura.emitida){ if(!map[r.periodo]) map[r.periodo]={total:0,count:0}; map[r.periodo].total+=dashAmt(r); map[r.periodo].count++; } });
+  allLines(function(l){ return l.emitida; }).forEach(function(x){ var p=x.r.periodo; if(!map[p]) map[p]={total:0,count:0}; map[p].total+=x.l.total; map[p].count++; });
   return map;
 }
 function statusDistributionMap(){
   var map={};
-  Object.keys(state.records).forEach(function(k){ var r=state.records[k]; var c=getClient(r.clientId); if(!c) return; var s=computeStatus(r,c); if(!map[s]) map[s]={count:0,monto:0}; map[s].count++; map[s].monto+=dashAmt(r); });
+  Object.keys(state.records).forEach(function(k){ var r=state.records[k]; var c=getClient(r.clientId); if(!c) return; var s=computeStatus(r,c); if(!map[s]) map[s]={count:0,monto:0}; map[s].count++; map[s].monto+=recTotalFacturado(r); });
   return map;
 }
 function barRows(items){
@@ -1916,18 +1978,16 @@ function barRows(items){
 
 function renderDashboard(){
   var box = document.getElementById('dashboardBody'); if(!box) return;
-  var recs = Object.keys(state.records).map(function(k){ return state.records[k]; });
   var facturadoTot=0, factCount=0, cobradoTot=0, cobradoCount=0, factzTot=0, factzCount=0;
-  recs.forEach(function(r){
-    var c=getClient(r.clientId); if(!c) return;
-    if(r.factura.emitida){ facturadoTot+=dashAmt(r); factCount++; }
-    if(r.pago.pagado){ cobradoTot+=(r.pago.monto||dashAmt(r)); cobradoCount++; }
-    if(r.factoring.factorizado){ factzTot+=(r.factoring.monto||dashAmt(r)); factzCount++; }
+  allLines().forEach(function(x){ var l=x.l;
+    if(l.emitida){ facturadoTot+=l.total; factCount++; }
+    if(l.pagado){ cobradoTot+=l.total; cobradoCount++; }
+    if(l.factorizado){ factzTot+=l.total; factzCount++; }
   });
   var avail = availableForFactoringList();
-  var availTot = avail.reduce(function(a,x){ return a+dashAmt(x.rec); },0);
-  var vencidos = avail.filter(function(x){ var d=daysUntil(x.rec.factura.fechaVencimiento); return d!==null && d<0; });
-  var vencTot = vencidos.reduce(function(a,x){ return a+dashAmt(x.rec); },0);
+  var availTot = avail.reduce(function(a,x){ return a+x.l.total; },0);
+  var vencidos = avail.filter(function(x){ var d=daysUntil(x.l.venc); return d!==null && d<0; });
+  var vencTot = vencidos.reduce(function(a,x){ return a+x.l.total; },0);
 
   var cards = [
     {cls:'k-facturado', lbl:'Total facturado', val:fmtMoney(facturadoTot), sub:factCount+' facturas'},
@@ -1954,14 +2014,14 @@ function renderDashboard(){
 
   // Tabla disponibles para factorizar
   var availRows = avail.slice(0,40).map(function(x){
-    var r=x.rec, c=x.client; var d=daysUntil(r.factura.fechaVencimiento);
+    var r=x.r, c=x.c, l=x.l; var d=daysUntil(l.venc);
     var chip = d===null ? '<span class="dias-chip">—</span>' : (d<0 ? '<span class="dias-chip venc">vencida '+(Math.abs(d))+'d</span>' : (d<=7 ? '<span class="dias-chip pronto">'+d+'d</span>' : '<span class="dias-chip">'+d+'d</span>'));
     return '<tr data-client="'+c.id+'" data-periodo="'+r.periodo+'">' +
-      '<td><strong>'+esc(c.cliente)+'</strong><br><span style="color:var(--slate-soft);font-size:11px;">'+esc(c.servicio)+'</span></td>' +
+      '<td><strong>'+esc(c.cliente)+'</strong><br><span style="color:var(--slate-soft);font-size:11px;">'+esc(c.servicio)+(l.tipo!=='Principal'?(' · '+esc(l.tipo)):'')+'</span></td>' +
       '<td>'+fmtPeriodo(r.periodo)+'</td>' +
-      '<td class="mono">'+esc(r.factura.numero||'—')+'</td>' +
-      '<td class="mono">'+fmtMoney(r.factura.total)+'</td>' +
-      '<td class="mono">'+fmtDate(r.factura.fechaVencimiento)+'</td>' +
+      '<td class="mono">'+esc(l.numero||'—')+'</td>' +
+      '<td class="mono">'+fmtMoney(l.total)+'</td>' +
+      '<td class="mono">'+fmtDate(l.venc)+'</td>' +
       '<td>'+chip+'</td></tr>';
   }).join('');
 
@@ -2039,7 +2099,7 @@ function exportResumenXlsx(){
   });
   var montoData = clientsSorted.map(function(c){
     var row={'Cliente':c.cliente,'Servicio':c.servicio,'RUT':c.rut}; var tot=0;
-    periods.forEach(function(p){ var rec=getRecord(c.id,p); var v=(rec&&rec.factura.emitida)?rec.factura.total:0; row[fmtPeriodo(p)]=v; tot+=v; });
+    periods.forEach(function(p){ var rec=getRecord(c.id,p); var v=rec?recTotalFacturado(rec):0; row[fmtPeriodo(p)]=v; tot+=v; });
     row['Total']=tot; return row;
   });
   var totalRow={'Cliente':'TOTAL','Servicio':'','RUT':''};
@@ -2067,17 +2127,18 @@ function saveWb(wb, name){ XLSX.writeFile(wb, name); toast('Informe generado.', 
 /* Informe: todo lo factorizado (RUT + razón social entidad, factura, fecha factoring) */
 function exportFactorizadoXlsx(){
   if(!window.XLSX){ toast('Módulo Excel no disponible.', 'err'); return; }
-  var entries = recEntries(function(r){ return r.factoring.factorizado; });
+  var entries = allLines(function(l){ return l.factorizado; });
   if(!entries.length){ toast('No hay facturas factorizadas.', 'err'); return; }
-  var rows = entries.map(function(x){ var r=x.r, c=x.c; var ent=entidadByName(r.factoring.entidad);
+  var rows = entries.map(function(x){ var l=x.l, c=x.c; var ent=entidadByName(l.entidad);
     return {
-      'Razón social entidad': r.factoring.entidad||'',
+      'Razón social entidad': l.entidad||'',
       'RUT entidad': ent?ent.rut:'',
-      'N° Factura': r.factura.numero||'',
-      'Fecha factoring': r.factoring.fecha||'',
-      'Monto factorizado': r.factoring.monto||r.factura.total||0,
+      'N° Factura': l.numero||'',
+      'Tipo': l.tipo,
+      'Fecha factoring': l.factFecha||'',
+      'Monto factorizado': l.total||0,
       'Cliente': c.cliente, 'Servicio': c.servicio, 'RUT cliente': c.rut,
-      'Mes servicio': fmtPeriodo(r.periodo)
+      'Mes servicio': fmtPeriodo(x.r.periodo)
     };
   });
   rows.sort(function(a,b){ return (a['Razón social entidad']||'').localeCompare(b['Razón social entidad']) || (a['Fecha factoring']||'').localeCompare(b['Fecha factoring']); });
@@ -2092,22 +2153,23 @@ function exportFactorizadoXlsx(){
 /* Informe: detalle de todo lo facturado */
 function exportDetalleXlsx(){
   if(!window.XLSX){ toast('Módulo Excel no disponible.', 'err'); return; }
-  var entries = recEntries(function(r){ return r.factura.emitida; });
+  var entries = allLines(function(l){ return l.emitida; });
   if(!entries.length){ toast('No hay facturas emitidas.', 'err'); return; }
-  var rows = entries.map(function(x){ var r=x.r, c=x.c; var ent=entidadByName(r.factoring.entidad);
+  var rows = entries.map(function(x){ var l=x.l, r=x.r, c=x.c; var ent=entidadByName(l.entidad);
     return {
       'Mes servicio': fmtPeriodo(r.periodo),
       'Cliente': c.cliente, 'Servicio': c.servicio, 'RUT cliente': c.rut,
-      'N° Factura': r.factura.numero||'',
-      'Fecha factura': r.factura.fechaFacturada||'',
-      'Vencimiento': r.factura.fechaVencimiento||'',
-      'Neto': r.factura.neto||0, 'IVA': r.factura.iva||0, 'Total': r.factura.total||0,
+      'Tipo factura': l.tipo,
+      'N° Factura': l.numero||'',
+      'Fecha factura': l.fechaFac||'',
+      'Vencimiento': l.venc||'',
+      'Neto': l.neto||0, 'IVA': l.iva||0, 'Total': l.total||0,
       'Orden de Compra': r.oc.numero||'', 'HES': r.hes.numero||'',
-      'Estado': STATUS_DEFS[computeStatus(r,c)].label,
-      'Factorizado': r.factoring.factorizado?'SI':'NO',
-      'Entidad factoring': r.factoring.entidad||'', 'RUT entidad': ent?ent.rut:'',
-      'Fecha factoring': r.factoring.fecha||'',
-      'Pagado': r.pago.pagado?'SI':'NO', 'Fecha pago': r.pago.fecha||'',
+      'Estado factura': lineBucket(l).toUpperCase(),
+      'Factorizado': l.factorizado?'SI':'NO',
+      'Entidad factoring': l.entidad||'', 'RUT entidad': ent?ent.rut:'',
+      'Fecha factoring': l.factFecha||'',
+      'Pagado': l.pagado?'SI':'NO', 'Fecha pago': l.pagoFecha||'',
       'Glosa': r.notas||''
     };
   });
@@ -2119,18 +2181,18 @@ function exportDetalleXlsx(){
 /* Informe: cuentas por cobrar (emitidas, no pagadas, no factorizadas) */
 function exportPorCobrarXlsx(){
   if(!window.XLSX){ toast('Módulo Excel no disponible.', 'err'); return; }
-  var entries = recEntries(function(r){ return r.factura.emitida && !r.pago.pagado && !r.factoring.factorizado; });
+  var entries = allLines(function(l){ return l.emitida && !l.pagado && !l.factorizado; });
   if(!entries.length){ toast('No hay cuentas por cobrar.', 'err'); return; }
-  entries.sort(function(a,b){ return (a.r.factura.fechaVencimiento||'').localeCompare(b.r.factura.fechaVencimiento||''); });
-  var rows = entries.map(function(x){ var r=x.r, c=x.c; var d=daysUntil(r.factura.fechaVencimiento);
+  entries.sort(function(a,b){ return (a.l.venc||'').localeCompare(b.l.venc||''); });
+  var rows = entries.map(function(x){ var l=x.l, r=x.r, c=x.c; var d=daysUntil(l.venc);
     return {
       'Cliente': c.cliente, 'Servicio': c.servicio, 'RUT cliente': c.rut,
       'Mes servicio': fmtPeriodo(r.periodo),
-      'N° Factura': r.factura.numero||'', 'Total': r.factura.total||0,
-      'Fecha factura': r.factura.fechaFacturada||'', 'Vencimiento': r.factura.fechaVencimiento||'',
+      'Tipo factura': l.tipo,
+      'N° Factura': l.numero||'', 'Total': l.total||0,
+      'Fecha factura': l.fechaFac||'', 'Vencimiento': l.venc||'',
       'Días (+ por vencer / - vencida)': (d===null?'':d),
-      'Situación': (d===null?'—':(d<0?'VENCIDA':(d<=7?'Por vencer':'Vigente'))),
-      'Estado': STATUS_DEFS[computeStatus(r,c)].label
+      'Situación': (d===null?'—':(d<0?'VENCIDA':(d<=7?'Por vencer':'Vigente')))
     };
   });
   var total = rows.reduce(function(a,r){ return a+(r['Total']||0); },0);
@@ -2143,15 +2205,16 @@ function exportPorCobrarXlsx(){
 /* Informe: facturas cobradas / pagadas */
 function exportPagadasXlsx(){
   if(!window.XLSX){ toast('Módulo Excel no disponible.', 'err'); return; }
-  var entries = recEntries(function(r){ return r.pago.pagado; });
+  var entries = allLines(function(l){ return l.pagado; });
   if(!entries.length){ toast('No hay facturas pagadas.', 'err'); return; }
-  var rows = entries.map(function(x){ var r=x.r, c=x.c;
+  var rows = entries.map(function(x){ var l=x.l, r=x.r, c=x.c;
     return {
       'Cliente': c.cliente, 'Servicio': c.servicio, 'RUT cliente': c.rut,
       'Mes servicio': fmtPeriodo(r.periodo),
-      'N° Factura': r.factura.numero||'',
-      'Monto pagado': r.pago.monto||r.factura.total||0,
-      'Fecha pago': r.pago.fecha||'', 'Fecha factura': r.factura.fechaFacturada||''
+      'Tipo factura': l.tipo,
+      'N° Factura': l.numero||'',
+      'Monto pagado': l.total||0,
+      'Fecha pago': l.pagoFecha||'', 'Fecha factura': l.fechaFac||''
     };
   });
   var total=rows.reduce(function(a,r){ return a+(r['Monto pagado']||0); },0);
@@ -2176,6 +2239,36 @@ function exportTechXlsx(){
   var wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Tecnología');
   saveWb(wb, 'detalle-tecnologia.xlsx');
+}
+
+/* Informe: resumen mensual por cliente (matrices facturado / cobrado / pendiente) */
+function recFacturadoVal(rec){ return recTotalFacturado(rec); }
+function recCobradoVal(rec){ var t=0; invoiceLines(rec).forEach(function(l){ if(l.pagado) t+=l.total; }); return t; }
+function recFactorizadoVal(rec){ var t=0; invoiceLines(rec).forEach(function(l){ if(l.factorizado) t+=l.total; }); return t; }
+function recPendienteVal(rec){ var t=0; invoiceLines(rec).forEach(function(l){ if(l.emitida && !l.pagado && !l.factorizado) t+=l.total; }); return t; }
+function buildMatrixSheet(valueFn){
+  var clientsSorted = state.clients.slice().sort(function(a,b){ return a.cliente.localeCompare(b.cliente) || a.servicio.localeCompare(b.servicio); });
+  var periods = state.periods.slice().sort();
+  var data = clientsSorted.map(function(c){
+    var row={'Cliente':c.cliente,'Servicio':c.servicio,'RUT':c.rut}; var tot=0;
+    periods.forEach(function(p){ var rec=getRecord(c.id,p); var v=rec?valueFn(rec):0; row[fmtPeriodo(p)]=v; tot+=v; });
+    row['Total']=tot; return row;
+  });
+  var totalRow={'Cliente':'TOTAL','Servicio':'','RUT':''};
+  periods.forEach(function(p){ totalRow[fmtPeriodo(p)]=data.reduce(function(a,r){ return a+(r[fmtPeriodo(p)]||0); },0); });
+  totalRow['Total']=data.reduce(function(a,r){ return a+(r['Total']||0); },0);
+  data.push(totalRow);
+  return XLSX.utils.json_to_sheet(data);
+}
+function exportResumenMensualXlsx(){
+  if(!window.XLSX){ toast('Módulo Excel no disponible.', 'err'); return; }
+  if(state.periods.length===0){ toast('No hay periodos para exportar.', 'err'); return; }
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, buildMatrixSheet(recFacturadoVal), 'Facturado mensual');
+  XLSX.utils.book_append_sheet(wb, buildMatrixSheet(recCobradoVal), 'Cobrado mensual');
+  XLSX.utils.book_append_sheet(wb, buildMatrixSheet(recFactorizadoVal), 'Factorizado mensual');
+  XLSX.utils.book_append_sheet(wb, buildMatrixSheet(recPendienteVal), 'Pendiente mensual');
+  saveWb(wb, 'resumen-mensual-por-cliente.xlsx');
 }
 
 /* ---------- Render general ---------- */
@@ -2203,6 +2296,7 @@ function initEvents(){
   document.getElementById('btnAddEntidad').addEventListener('click', addEntidad);
   document.getElementById('nuevaEntidadRazon').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); addEntidad(); } });
   document.getElementById('nuevaEntidadRut').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); addEntidad(); } });
+  document.getElementById('btnRepMensual').addEventListener('click', exportResumenMensualXlsx);
   document.getElementById('btnRepFactorizado').addEventListener('click', exportFactorizadoXlsx);
   document.getElementById('btnRepDetalle').addEventListener('click', exportDetalleXlsx);
   document.getElementById('btnRepPorCobrar').addEventListener('click', exportPorCobrarXlsx);
