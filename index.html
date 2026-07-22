@@ -526,6 +526,7 @@ body.theme-dark .dias-chip.venc{color:#E08585;}
             <th>Orden de Compra</th>
             <th>HES</th>
             <th>Total</th>
+            <th>Vencimiento</th>
             <th>Estado</th>
             <th></th>
           </tr>
@@ -1262,6 +1263,11 @@ var persistDebounced = debounce(persist, 400);
    ============================================================ */
 function getTech(id){ for(var i=0;i<state.tech.length;i++){ if(state.tech[i].id===id) return state.tech[i]; } return null; }
 function techEstadoAuto(t){ if(t.factura && (!t.estado || t.estado==='pendiente')) t.estado='facturado'; }
+/* Convierte un servicio de tecnología en una "línea" compatible con los KPIs/dashboard */
+function techLine(t){
+  var emit = (t.estado!=='anulada') && !!(t.factura || t.estado==='facturado' || t.estado==='pagado' || t.estado==='factorizado');
+  return { total:Number(t.total)||0, emitida:emit, factorizado:(t.estado==='factorizado'), pagado:(t.estado==='pagado'), venc:t.fechaVencimiento||'', fechaFac:t.fechaFactura||'' };
+}
 
 function filteredTech(){
   var q = (filters.buscar||'').toLowerCase();
@@ -1312,6 +1318,7 @@ function renderTech(){
       '<td class="mono">'+(t.oc?esc(t.oc):'—')+'</td>' +
       '<td class="mono">'+(t.hes?esc(t.hes):'—')+'</td>' +
       '<td class="mono">'+(t.total?fmtMoney(t.total):'—')+'</td>' +
+      '<td class="mono">'+(t.fechaVencimiento?fmtDate(t.fechaVencimiento):'—')+'</td>' +
       '<td><span class="badge '+sd.css+'">'+sd.label+'</span></td>' +
       '<td><button class="btn btn-ghost btn-sm">Abrir →</button></td>' +
       '</tr>';
@@ -1325,7 +1332,7 @@ function openTechModal(id){ editingTechId = id || null; renderTechModal(); docum
 function closeTechModal(){ document.getElementById('overlayTech').classList.remove('show'); editingTechId=null; }
 function renderTechModal(){
   var isEdit = !!editingTechId;
-  var t = isEdit ? getTech(editingTechId) : {id:'',periodo:currentPeriodo(),rut:'',cliente:'',cotizacion:'',factura:'',oc:'',hes:'',neto:0,iva:0,total:0,estado:'pendiente',notas:''};
+  var t = isEdit ? getTech(editingTechId) : {id:'',periodo:currentPeriodo(),rut:'',cliente:'',cotizacion:'',factura:'',oc:'',hes:'',neto:0,iva:0,total:0,estado:'pendiente',notas:'',fechaFactura:'',fechaVencimiento:''};
   var estadoOpts = Object.keys(TECH_STATUS).map(function(k){ return '<option value="'+k+'" '+(t.estado===k?'selected':'')+'>'+TECH_STATUS[k].label+'</option>'; }).join('');
   var modal = document.getElementById('modalTech');
   modal.innerHTML =
@@ -1339,6 +1346,8 @@ function renderTechModal(){
         '<div class="field"><label>Cliente</label><input type="text" id="tf_cliente" value="'+esc(t.cliente)+'"></div>' +
         '<div class="field"><label>N° Cotización</label><input type="text" id="tf_cot" value="'+esc(t.cotizacion)+'"></div>' +
         '<div class="field"><label>N° Factura</label><input type="text" id="tf_factura" value="'+esc(t.factura)+'"></div>' +
+        '<div class="field"><label>Fecha de factura</label><input type="date" id="tf_fecfac" value="'+esc(t.fechaFactura||'')+'"></div>' +
+        '<div class="field"><label>Vencimiento (30 días)</label><input type="date" id="tf_vto" value="'+esc(t.fechaVencimiento||'')+'"></div>' +
         '<div class="field"><label>Orden de Compra</label><input type="text" id="tf_oc" value="'+esc(t.oc)+'"></div>' +
         '<div class="field"><label>HES (si corresponde)</label><input type="text" id="tf_hes" value="'+esc(t.hes)+'"></div>' +
         '<div class="field"><label>Monto neto</label><input type="number" step="1" id="tf_neto" value="'+(t.neto||0)+'"></div>' +
@@ -1361,6 +1370,8 @@ function renderTechModal(){
     var neto = parseFloat(netoEl.value)||0; var iva=Math.round(neto*0.19);
     modal.querySelector('.computed').innerHTML = '<span>IVA (19%): '+fmtMoney(iva)+'</span><span>Total: '+fmtMoney(neto+iva)+'</span>';
   });
+  var fecfacEl = document.getElementById('tf_fecfac'), vtoEl = document.getElementById('tf_vto');
+  fecfacEl.addEventListener('change', function(){ if(fecfacEl.value && !vtoEl.value) vtoEl.value = addDaysISO(fecfacEl.value, 30); });
   document.getElementById('btnSaveTech').onclick = function(){
     var neto = parseFloat(document.getElementById('tf_neto').value)||0;
     var data = {
@@ -1373,9 +1384,12 @@ function renderTechModal(){
       hes: document.getElementById('tf_hes').value.trim(),
       neto: neto, iva: Math.round(neto*0.19), total: neto + Math.round(neto*0.19),
       estado: document.getElementById('tf_estado').value,
-      notas: document.getElementById('tf_notas').value.trim()
+      notas: document.getElementById('tf_notas').value.trim(),
+      fechaFactura: document.getElementById('tf_fecfac').value,
+      fechaVencimiento: document.getElementById('tf_vto').value
     };
     if(!data.cliente){ toast('El cliente es obligatorio.', 'err'); return; }
+    if(data.fechaFactura && !data.fechaVencimiento) data.fechaVencimiento = addDaysISO(data.fechaFactura, 30);
     techEstadoAuto(data);
     if(isEdit){ Object.assign(getTech(editingTechId), data); toast('Servicio actualizado.', 'ok'); }
     else { data.id = uid('t'); state.tech.push(data); toast('Servicio agregado.', 'ok'); }
@@ -1443,6 +1457,8 @@ var TECH_ALIAS = {
   cliente:['cliente','razon social'],
   cotizacion:['n cot','cot','cotizacion','n cotizacion','numero cotizacion','n de cotizacion'],
   factura:['n factura','factura','nro factura'],
+  fecha:['fecha de facturacion','fecha facturacion','fecha factura','fecha'],
+  vencimiento:['vencimiento','fecha vencimiento','fecha de vencimiento'],
   oc:['orden de compra','oc','n oc'],
   hes:['hes','roc','n hes'],
   neto:['neto','monto neto'],
@@ -1605,8 +1621,11 @@ function processTechRows(rows){
       oc: String(pick(nd, TECH_ALIAS.oc)||'').replace(/\.0+$/,'').trim(),
       hes: String(pick(nd, TECH_ALIAS.hes)||'').replace(/\.0+$/,'').trim(),
       neto:neto, iva:iva, total:total, estado:estado,
+      fechaFactura: excelDateToISO(pick(nd, TECH_ALIAS.fecha)),
+      fechaVencimiento: excelDateToISO(pick(nd, TECH_ALIAS.vencimiento)),
       notas: String(pick(nd, TECH_ALIAS.glosa)||'').trim()
     };
+    if(rec.fechaFactura && !rec.fechaVencimiento) rec.fechaVencimiento = addDaysISO(rec.fechaFactura, 30);
     var ex = factura ? state.tech.filter(function(t){ return t.factura && String(t.factura)===String(factura); })[0] : null;
     if(ex){ Object.assign(ex, rec); updated++; }
     else { rec.id=uid('t'); state.tech.push(rec); created++; }
@@ -1642,8 +1661,8 @@ function downloadTemplate(destino){
   var wb = XLSX.utils.book_new(), ws, name;
   if(destino==='tecnologia'){
     ws = XLSX.utils.json_to_sheet([
-      { 'Mes':'2026-03','RUT':'76.993.859-1','Cliente':'IKSO SPA PLAZA OESTE','N° Cotización':'COT-100','N° Factura':13967,'Orden de Compra':'','HES':'','Neto':4161675,'IVA':790718,'Total':4952393,'Estado':'Pendiente','Notas':'' },
-      { 'Mes':'2026-04','RUT':'','Cliente':'PUNTO BRIKS SPA','N° Cotización':'COT-201','N° Factura':'','Orden de Compra':'','HES':'','Neto':555128,'IVA':'','Total':'','Estado':'Pendiente','Notas':'Solo con Neto: IVA y Total se calculan al importar' }
+      { 'Mes':'2026-03','RUT':'76.993.859-1','Cliente':'IKSO SPA PLAZA OESTE','N° Cotización':'COT-100','N° Factura':13967,'Fecha Factura':'2026-04-30','Vencimiento':'2026-05-30','Orden de Compra':'','HES':'','Neto':4161675,'IVA':790718,'Total':4952393,'Estado':'Pendiente','Notas':'' },
+      { 'Mes':'2026-04','RUT':'','Cliente':'PUNTO BRIKS SPA','N° Cotización':'COT-201','N° Factura':'','Fecha Factura':'','Vencimiento':'','Orden de Compra':'','HES':'','Neto':555128,'IVA':'','Total':'','Estado':'Pendiente','Notas':'Solo con Neto: IVA y Total se calculan al importar' }
     ]);
     XLSX.utils.book_append_sheet(wb, ws, 'Tecnologia'); name='Plantilla_Tecnologia.xlsx';
   } else {
@@ -1758,6 +1777,20 @@ function renderKPIs(){
       if(b==='vencido') vencidos++;
     });
   });
+  // Incluir Tecnología (cuando no hay filtro por cliente/estado de cobranza)
+  if(!filters.cliente && !filters.estado){
+    state.tech.forEach(function(t){
+      if(filters.periodo && t.periodo!==filters.periodo) return;
+      if(filters.buscar){ var q=filters.buscar.toLowerCase(); if([t.cliente,t.rut,t.cotizacion,t.factura,t.oc,t.hes].join(' ').toLowerCase().indexOf(q)===-1) return; }
+      var l=techLine(t); if(!l.emitida) return;
+      var b=lineBucket(l);
+      facturadoTot += l.total; facCount++;
+      if(b==='pagado'){ pagadoTot += l.total; pagCount++; }
+      else if(b==='factorizado'){ factorizadoTot += l.total; factzCount++; }
+      else if(b==='facturado' || b==='vencido'){ pendienteTot += l.total; pendCount++; }
+      if(b==='vencido') vencidos++;
+    });
+  }
   var kpis = [
     {cls:'k-facturado', lbl:'Total facturado', val:fmtMoney(facturadoTot), sub:facCount + ' facturas'},
     {cls:'k-pagado', lbl:'Pagado', val:fmtMoney(pagadoTot), sub:pagCount + ' facturas'},
@@ -2079,17 +2112,27 @@ function renderDashboard(){
     if(l.pagado){ cobradoTot+=l.total; cobradoCount++; }
     if(l.factorizado){ factzTot+=l.total; factzCount++; }
   });
+  // Incluir Tecnología en los totales
+  state.tech.forEach(function(t){ var l=techLine(t); if(!l.emitida) return;
+    facturadoTot+=l.total; factCount++;
+    if(l.pagado){ cobradoTot+=l.total; cobradoCount++; }
+    if(l.factorizado){ factzTot+=l.total; factzCount++; }
+  });
   var avail = availableForFactoringList();
   var availTot = avail.reduce(function(a,x){ return a+x.l.total; },0);
   var vencidos = avail.filter(function(x){ var d=daysUntil(x.l.venc); return d!==null && d<0; });
   var vencTot = vencidos.reduce(function(a,x){ return a+x.l.total; },0);
+  // Tecnología vencida (facturada, no pagada, no factorizada, con vencimiento pasado)
+  var techVenc = state.tech.filter(function(t){ var l=techLine(t); return l.emitida && !l.pagado && !l.factorizado && l.venc && daysUntil(l.venc)<0; });
+  var vencCount = vencidos.length + techVenc.length;
+  var vencMonto = vencTot + techVenc.reduce(function(a,t){ return a+(Number(t.total)||0); },0);
 
   var cards = [
     {cls:'k-facturado', lbl:'Total facturado', val:fmtMoney(facturadoTot), sub:factCount+' facturas'},
-    {cls:'k-pagado', lbl:'Cobrado', val:fmtMoney(cobradoTot), sub:cobradoCount+' registros'},
-    {cls:'k-factorizado', lbl:'Factorizado', val:fmtMoney(factzTot), sub:factzCount+' registros'},
+    {cls:'k-pagado', lbl:'Cobrado', val:fmtMoney(cobradoTot), sub:cobradoCount+' facturas'},
+    {cls:'k-factorizado', lbl:'Factorizado', val:fmtMoney(factzTot), sub:factzCount+' facturas'},
     {cls:'k-pendiente', lbl:'Disponible p/ factorizar', val:fmtMoney(availTot), sub:avail.length+' facturas'},
-    {cls:'k-vencido', lbl:'Vencidas por cobrar', val:vencidos.length, sub:fmtMoney(vencTot)}
+    {cls:'k-vencido', lbl:'Vencidas por cobrar', val:vencCount, sub:fmtMoney(vencMonto)}
   ];
   var cardsHtml = '<div class="kpis">' + cards.map(function(k){ return '<div class="kpi '+k.cls+'"><div class="lbl">'+k.lbl+'</div><div class="val">'+k.val+'</div><div class="sub">'+k.sub+'</div></div>'; }).join('') + '</div>';
 
