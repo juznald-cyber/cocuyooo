@@ -1269,7 +1269,7 @@ function techEstadoAuto(t){ if(t.factura && (!t.estado || t.estado==='pendiente'
 /* Convierte un servicio de tecnología en una "línea" compatible con los KPIs/dashboard */
 function techLine(t){
   var emit = (t.estado!=='anulada') && !!(t.factura || t.estado==='facturado' || t.estado==='pagado' || t.estado==='factorizado');
-  return { total:Number(t.total)||0, emitida:emit, factorizado:(t.estado==='factorizado'), pagado:(t.estado==='pagado'), venc:t.fechaVencimiento||'', fechaFac:t.fechaFactura||'' };
+  return { total:Number(t.total)||0, emitida:emit, factorizado:(t.estado==='factorizado'), pagado:(t.estado==='pagado'), venc:t.fechaVencimiento||'', fechaFac:t.fechaFactura||'', factFecha:'', entidad:t.entidad||'', numero:t.factura||'', tipo:'Tecnología' };
 }
 /* Traduce el estado de un servicio de tecnología a la misma clave que el filtro de Estado de cobranza */
 function techStatusKey(t){
@@ -1331,7 +1331,7 @@ function renderTech(){
       '<td class="mono">'+(t.hes?esc(t.hes):'—')+'</td>' +
       '<td class="mono">'+(t.total?fmtMoney(t.total):'—')+'</td>' +
       '<td class="mono">'+(t.fechaVencimiento?fmtDate(t.fechaVencimiento):'—')+'</td>' +
-      '<td><span class="badge '+sd.css+'">'+sd.label+'</span></td>' +
+      '<td><span class="badge '+sd.css+'">'+sd.label+'</span>'+((t.estado==='factorizado'&&t.entidad)?('<br><span style="font-size:11px;color:var(--purple);">'+esc(t.entidad)+'</span>'):'')+'</td>' +
       '<td><button class="btn btn-ghost btn-sm">Abrir →</button></td>' +
       '</tr>';
   }).join('');
@@ -1344,7 +1344,7 @@ function openTechModal(id){ editingTechId = id || null; renderTechModal(); docum
 function closeTechModal(){ document.getElementById('overlayTech').classList.remove('show'); editingTechId=null; }
 function renderTechModal(){
   var isEdit = !!editingTechId;
-  var t = isEdit ? getTech(editingTechId) : {id:'',periodo:currentPeriodo(),rut:'',cliente:'',cotizacion:'',factura:'',oc:'',hes:'',neto:0,iva:0,total:0,estado:'pendiente',notas:'',fechaFactura:'',fechaVencimiento:''};
+  var t = isEdit ? getTech(editingTechId) : {id:'',periodo:currentPeriodo(),rut:'',cliente:'',cotizacion:'',factura:'',oc:'',hes:'',neto:0,iva:0,total:0,estado:'pendiente',notas:'',fechaFactura:'',fechaVencimiento:'',entidad:''};
   var estadoOpts = Object.keys(TECH_STATUS).map(function(k){ return '<option value="'+k+'" '+(t.estado===k?'selected':'')+'>'+TECH_STATUS[k].label+'</option>'; }).join('');
   var modal = document.getElementById('modalTech');
   modal.innerHTML =
@@ -1366,6 +1366,7 @@ function renderTechModal(){
       '</div>' +
       '<div class="computed" style="margin-top:10px;"><span>IVA (19%): '+fmtMoney(t.iva)+'</span><span>Total: '+fmtMoney(t.total)+'</span></div>' +
       '<div class="field" style="margin-top:12px;"><label>Estado</label><select id="tf_estado">'+estadoOpts+'</select></div>' +
+      '<div class="field" style="margin-top:12px;"><label>Entidad financiera <span style="font-weight:400;color:var(--slate-soft);">(si se factorizó · escribe para buscar)</span></label><input type="text" list="entidadesDatalist" id="tf_entidad" value="'+esc(t.entidad||'')+'" placeholder="Escribe o elige de la lista…" autocomplete="off"></div>' +
       '<div class="field" style="margin-top:12px;"><label>Notas / glosa</label><textarea id="tf_notas">'+esc(t.notas)+'</textarea></div>' +
       '<p class="hint">Al ingresar un N° de factura, si el estado está en “Pendiente” pasará automáticamente a “Facturado”.</p>' +
     '</div>' +
@@ -1396,6 +1397,7 @@ function renderTechModal(){
       hes: document.getElementById('tf_hes').value.trim(),
       neto: neto, iva: Math.round(neto*0.19), total: neto + Math.round(neto*0.19),
       estado: document.getElementById('tf_estado').value,
+      entidad: document.getElementById('tf_entidad').value.trim(),
       notas: document.getElementById('tf_notas').value.trim(),
       fechaFactura: document.getElementById('tf_fecfac').value,
       fechaVencimiento: document.getElementById('tf_vto').value
@@ -1477,6 +1479,7 @@ var TECH_ALIAS = {
   iva:['iva'],
   total:['total','monto'],
   estado:['status','estado','status pago','estatus'],
+  entidad:['entidad','entidad factoring','entidad financiera','entidad 2'],
   glosa:['glosa','notas','detalle']
 };
 function rowLookup(row){ var nd={}; Object.keys(row).forEach(function(k){ nd[normH(k)]=row[k]; }); return nd; }
@@ -1633,6 +1636,7 @@ function processTechRows(rows){
       oc: String(pick(nd, TECH_ALIAS.oc)||'').replace(/\.0+$/,'').trim(),
       hes: String(pick(nd, TECH_ALIAS.hes)||'').replace(/\.0+$/,'').trim(),
       neto:neto, iva:iva, total:total, estado:estado,
+      entidad: String(pick(nd, TECH_ALIAS.entidad)||'').trim(),
       fechaFactura: excelDateToISO(pick(nd, TECH_ALIAS.fecha)),
       fechaVencimiento: excelDateToISO(pick(nd, TECH_ALIAS.vencimiento)),
       notas: String(pick(nd, TECH_ALIAS.glosa)||'').trim()
@@ -1673,8 +1677,8 @@ function downloadTemplate(destino){
   var wb = XLSX.utils.book_new(), ws, name;
   if(destino==='tecnologia'){
     ws = XLSX.utils.json_to_sheet([
-      { 'Mes':'2026-03','RUT':'76.993.859-1','Cliente':'IKSO SPA PLAZA OESTE','N° Cotización':'COT-100','N° Factura':13967,'Fecha Factura':'2026-04-30','Vencimiento':'2026-05-30','Orden de Compra':'','HES':'','Neto':4161675,'IVA':790718,'Total':4952393,'Estado':'Pendiente','Notas':'' },
-      { 'Mes':'2026-04','RUT':'','Cliente':'PUNTO BRIKS SPA','N° Cotización':'COT-201','N° Factura':'','Fecha Factura':'','Vencimiento':'','Orden de Compra':'','HES':'','Neto':555128,'IVA':'','Total':'','Estado':'Pendiente','Notas':'Solo con Neto: IVA y Total se calculan al importar' }
+      { 'Mes':'2026-03','RUT':'76.993.859-1','Cliente':'IKSO SPA PLAZA OESTE','N° Cotización':'COT-100','N° Factura':13967,'Fecha Factura':'2026-04-30','Vencimiento':'2026-05-30','Orden de Compra':'','HES':'','Neto':4161675,'IVA':790718,'Total':4952393,'Estado':'Factorizado','Entidad':'Finameris','Notas':'' },
+      { 'Mes':'2026-04','RUT':'','Cliente':'PUNTO BRIKS SPA','N° Cotización':'COT-201','N° Factura':'','Fecha Factura':'','Vencimiento':'','Orden de Compra':'','HES':'','Neto':555128,'IVA':'','Total':'','Estado':'Pendiente','Entidad':'','Notas':'Solo con Neto: IVA y Total se calculan al importar' }
     ]);
     XLSX.utils.book_append_sheet(wb, ws, 'Tecnologia'); name='Plantilla_Tecnologia.xlsx';
   } else {
@@ -2095,6 +2099,7 @@ function availableForFactoringList(){
 function factoringByEntityMap(){
   var map={};
   allLines(function(l){ return l.factorizado; }).forEach(function(x){ var e=x.l.entidad||'Sin especificar'; if(!map[e]) map[e]={count:0,monto:0}; map[e].count++; map[e].monto+=x.l.total; });
+  state.tech.forEach(function(t){ var l=techLine(t); if(l.factorizado){ var e=l.entidad||'Sin especificar'; if(!map[e]) map[e]={count:0,monto:0}; map[e].count++; map[e].monto+=l.total; } });
   return map;
 }
 function facturadoByMonthMap(){
@@ -2280,6 +2285,7 @@ function saveWb(wb, name){ XLSX.writeFile(wb, name); toast('Informe generado.', 
 function exportFactorizadoXlsx(){
   if(!window.XLSX){ toast('Módulo Excel no disponible.', 'err'); return; }
   var entries = allLines(function(l){ return l.factorizado; });
+  state.tech.forEach(function(t){ var l=techLine(t); if(l.factorizado){ entries.push({l:l, r:{periodo:t.periodo}, c:{cliente:t.cliente||'—', servicio:'Tecnología', rut:t.rut||''}}); } });
   if(!entries.length){ toast('No hay facturas factorizadas.', 'err'); return; }
   var rows = entries.map(function(x){ var l=x.l, c=x.c; var ent=entidadByName(l.entidad);
     return {
@@ -2383,9 +2389,13 @@ function exportTechXlsx(){
   var rows = state.tech.slice().sort(function(a,b){ return (a.periodo||'').localeCompare(b.periodo||''); }).map(function(t){
     return {
       'Mes servicio': fmtPeriodo(t.periodo), 'RUT cliente': t.rut||'', 'Cliente': t.cliente||'',
-      'N° Cotización': t.cotizacion||'', 'N° Factura': t.factura||'', 'Orden de Compra': t.oc||'', 'HES': t.hes||'',
+      'N° Cotización': t.cotizacion||'', 'N° Factura': t.factura||'',
+      'Fecha factura': t.fechaFactura||'', 'Vencimiento': t.fechaVencimiento||'',
+      'Orden de Compra': t.oc||'', 'HES': t.hes||'',
       'Neto': t.neto||0, 'IVA': t.iva||0, 'Total': t.total||0,
-      'Estado': (TECH_STATUS[t.estado]||TECH_STATUS.pendiente).label, 'Notas': t.notas||''
+      'Estado': (TECH_STATUS[t.estado]||TECH_STATUS.pendiente).label,
+      'Entidad factoring': t.entidad||'', 'RUT entidad': (entidadByName(t.entidad)?entidadByName(t.entidad).rut:''),
+      'Notas': t.notas||''
     };
   });
   var wb=XLSX.utils.book_new();
