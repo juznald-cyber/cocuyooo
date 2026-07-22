@@ -196,6 +196,11 @@ a{color:inherit;}
 .adj-form label{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--slate-soft);}
 .adj-form select,.adj-form input[type=text],.adj-form input[type=file]{border:1px solid var(--line-strong);border-radius:7px;padding:7px 9px;background:#fff;min-width:150px;color:var(--ink);}
 .adj-cat-badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--amber-pale);color:var(--amber-deep);}
+.clip-badge{display:inline-block;font-size:11px;font-weight:700;color:var(--slate);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:2px 7px;}
+.rec-adj-item{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--line);}
+.rec-adj-name{font-weight:600;font-size:13px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rec-adj-meta{font-size:11.5px;color:var(--slate-soft);}
+.rec-adj-actions{margin-left:auto;white-space:nowrap;display:flex;gap:2px;}
 
 /* ---------- Tabs ---------- */
 .tabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--line);flex-wrap:wrap;}
@@ -1995,6 +2000,7 @@ function renderTable(){
     else if(seg) numTxt += ' <span style="color:var(--slate-soft);font-size:11px;">(2ª factura)</span>';
     if(rec.cubierta && rec.cubierta.activa){ numTxt = '<span style="color:#1F9E93;font-size:12px;">↪ '+(rec.cubierta.factura?('fact. '+esc(rec.cubierta.factura)):'en otra factura')+(rec.cubierta.periodo?(' · '+fmtPeriodo(rec.cubierta.periodo)):'')+'</span>'; }
     var totFac = recTotalFacturado(rec);
+    var nAdj = recordAdjuntos(recordKey(client.id, rec.periodo)).length;
     return '<tr data-key="'+recordKey(client.id, rec.periodo)+'">' +
       '<td class="cliente-cell"><strong>'+esc(client.cliente)+'</strong><span>'+esc(client.servicio)+' · '+esc(client.rut)+'</span></td>' +
       '<td>'+fmtPeriodo(rec.periodo)+'</td>' +
@@ -2003,7 +2009,7 @@ function renderTable(){
       '<td class="mono">'+(totFac ? fmtMoney(totFac) : '—')+'</td>' +
       '<td><span class="badge '+st.css+'">'+st.label+'</span></td>' +
       '<td>'+factoringTxt+'</td>' +
-      '<td><button class="btn btn-ghost btn-sm">Abrir →</button></td>' +
+      '<td style="white-space:nowrap;">'+(nAdj?'<span class="clip-badge" title="'+nAdj+' respaldo(s) adjunto(s)">📎 '+nAdj+'</span> ':'')+'<button class="btn btn-ghost btn-sm">Abrir →</button></td>' +
       '</tr>';
   }).join('');
   Array.prototype.forEach.call(body.querySelectorAll('tr'), function(tr){
@@ -2134,10 +2140,21 @@ function renderRecordModal(){
         '</div>' +
       '</div></div>' +
       '<div class="section"><div class="section-head"><h4>Notas / Glosa</h4></div><div class="section-body"><textarea data-field="notas">'+esc(rec.notas)+'</textarea></div></div>' +
+      '<div class="section"><div class="section-head"><h4>📎 Respaldos de este registro (factura, OC, HES)</h4></div><div class="section-body">' +
+        '<div class="adj-form" style="margin-bottom:10px;">' +
+          '<div class="fgroup"><label>Archivo (PDF o imagen)</label><input type="file" id="rec_adjFile" accept=".pdf,image/*"></div>' +
+          '<div class="fgroup"><label>Tipo</label><select id="rec_adjCat"><option value="factura">Factura</option><option value="oc">Orden de compra</option><option value="hes">HES / ROC</option><option value="otro">Otro</option></select></div>' +
+          '<div class="fgroup" style="flex:1;min-width:160px;"><label>Nota (opcional)</label><input type="text" id="rec_adjNota" placeholder="Descripción…"></div>' +
+          '<div class="fgroup" style="align-self:flex-end;"><button class="btn btn-primary" id="rec_btnAdj">Adjuntar</button></div>' +
+        '</div>' +
+        '<div id="recAdjList"></div>' +
+        '<p class="hint">Máx. 700 KB por archivo. Estos respaldos también aparecen en la pestaña “Respaldos”.</p>' +
+      '</div></div>' +
     '</div>' +
     '<div class="modal-foot"><button class="btn btn-ghost btn-danger-text" id="btnDeleteRecord">Eliminar registro</button>' +
       '<div style="display:flex;gap:8px;"><span class="badge '+STATUS_DEFS[cp.status].css+'" style="align-self:center;">'+STATUS_DEFS[cp.status].label+'</span><button class="btn btn-primary" id="btnCloseRecord2">Cerrar</button></div></div>';
   wireRecordModalEvents();
+  renderRecordAdjuntos();
 }
 function wireRecordModalEvents(){
   var modal = document.getElementById('modalRegistro');
@@ -2146,6 +2163,8 @@ function wireRecordModalEvents(){
   document.getElementById('btnDeleteRecord').onclick = function(){
     if(confirm('¿Eliminar este registro de facturación?')){ delete state.records[editingRecordKey]; closeRecordModal(); toast('Registro eliminado.', 'ok'); persist(); }
   };
+  var recAdjBtn = document.getElementById('rec_btnAdj');
+  if(recAdjBtn){ recAdjBtn.onclick = subirAdjuntoRegistro; }
   Array.prototype.forEach.call(modal.querySelectorAll('[data-field]'), function(el){
     var evt = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
     el.addEventListener(evt, function(){
@@ -2768,6 +2787,66 @@ function renderRespaldos(){
   Array.prototype.forEach.call(body.querySelectorAll('[data-adjver]'), function(x){ x.addEventListener('click', function(){ abrirAdjunto(x.getAttribute('data-adjver'), false); }); });
   Array.prototype.forEach.call(body.querySelectorAll('[data-adjdl]'), function(x){ x.addEventListener('click', function(){ abrirAdjunto(x.getAttribute('data-adjdl'), true); }); });
   Array.prototype.forEach.call(body.querySelectorAll('[data-adjdel]'), function(x){ x.addEventListener('click', function(){ eliminarAdjunto(x.getAttribute('data-adjdel')); }); });
+}
+
+/* ---------- Respaldos por registro ---------- */
+function recordAdjuntos(key){ return (state.adjuntos || []).filter(function(a){ return a.recordKey === key; }); }
+
+function renderRecordAdjuntos(){
+  var list = document.getElementById('recAdjList'); if(!list) return;
+  var items = recordAdjuntos(editingRecordKey).sort(function(a,b){ return (b.at||'').localeCompare(a.at||''); });
+  if(!items.length){ list.innerHTML = '<p style="color:var(--slate-soft);font-size:12.5px;margin:4px 0 0;">Aún no hay respaldos adjuntos a este registro.</p>'; return; }
+  list.innerHTML = items.map(function(a){
+    return '<div class="rec-adj-item">' +
+      '<span class="adj-cat-badge">' + esc(ADJ_CATS[a.cat] || a.cat) + '</span>' +
+      '<span class="rec-adj-name" title="' + esc(a.name) + '">' + esc(a.name) + '</span>' +
+      '<span class="rec-adj-meta">' + fmtSize(a.size) + (a.nota ? (' · ' + esc(a.nota)) : '') + '</span>' +
+      '<span class="rec-adj-actions">' +
+        '<button class="btn btn-ghost btn-sm" data-radjver="' + a.id + '">Ver</button>' +
+        '<button class="btn btn-ghost btn-sm" data-radjdl="' + a.id + '">Descargar</button>' +
+        '<button class="btn btn-ghost btn-sm" data-radjdel="' + a.id + '" style="color:#C0392B;">Eliminar</button>' +
+      '</span></div>';
+  }).join('');
+  Array.prototype.forEach.call(list.querySelectorAll('[data-radjver]'), function(x){ x.addEventListener('click', function(){ abrirAdjunto(x.getAttribute('data-radjver'), false); }); });
+  Array.prototype.forEach.call(list.querySelectorAll('[data-radjdl]'), function(x){ x.addEventListener('click', function(){ abrirAdjunto(x.getAttribute('data-radjdl'), true); }); });
+  Array.prototype.forEach.call(list.querySelectorAll('[data-radjdel]'), function(x){ x.addEventListener('click', function(){ eliminarAdjuntoRegistro(x.getAttribute('data-radjdel')); }); });
+}
+
+async function eliminarAdjuntoRegistro(id){
+  if(!confirm('¿Eliminar este respaldo? Esta acción no se puede deshacer.')) return;
+  try{ if(cloud.user && cloud.db) await cloud.db.collection('adjuntos').doc(id).delete(); }catch(e){ console.error(e); }
+  state.adjuntos = state.adjuntos.filter(function(a){ return a.id !== id; });
+  saveLocal(); renderRecordAdjuntos(); renderRespaldos();
+  toast('Respaldo eliminado.', 'ok');
+}
+
+async function subirAdjuntoRegistro(){
+  if(!cloud.user || !cloud.db){ toast('Debes iniciar sesión para adjuntar respaldos.', 'err'); return; }
+  var rec = state.records[editingRecordKey]; if(!rec) return;
+  var client = getClient(rec.clientId) || {};
+  var fileInput = document.getElementById('rec_adjFile');
+  var f = fileInput.files && fileInput.files[0];
+  if(!f){ toast('Primero selecciona un archivo.', 'err'); return; }
+  if(f.size > ADJ_MAX){ toast('El archivo pesa ' + fmtSize(f.size) + '. El máximo es 700 KB — comprímelo o escanéalo en menor resolución.', 'err'); return; }
+  var cat = document.getElementById('rec_adjCat').value;
+  var nota = document.getElementById('rec_adjNota').value.trim();
+  var ref = rec.factura.numero || rec.oc.numero || rec.hes.numero || '';
+  var btn = document.getElementById('rec_btnAdj'); btn.disabled = true; btn.textContent = 'Subiendo…';
+  try{
+    var dataUrl = await readFileAsDataURL(f);
+    var base64 = dataUrl.substring(dataUrl.indexOf(',') + 1);
+    var id = 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+    await cloud.db.collection('adjuntos').doc(id).set({
+      data: base64, name: f.name, mime: f.type || 'application/octet-stream',
+      at: new Date().toISOString(), uploadedBy: cloud.user.email
+    });
+    state.adjuntos.push({ id:id, cat:cat, ref:ref, cliente:client.cliente||'', nota:nota, name:f.name, mime:f.type||'', size:f.size, at:new Date().toISOString(), recordKey:editingRecordKey, periodo:rec.periodo });
+    saveLocal();
+    fileInput.value = ''; document.getElementById('rec_adjNota').value = '';
+    renderRecordAdjuntos(); renderRespaldos();
+    toast('Respaldo adjuntado al registro.', 'ok');
+  }catch(e){ console.error(e); toast('No se pudo subir el respaldo. Revisa tu conexión.', 'err'); }
+  finally{ btn.disabled = false; btn.textContent = 'Adjuntar'; }
 }
 
 /* ---------- Render general ---------- */
